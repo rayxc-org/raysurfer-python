@@ -109,6 +109,7 @@ class SearchMatch(BaseModel):
     language: str
     entrypoint: str
     dependencies: dict[str, str] = Field(default_factory=dict)  # Package name -> version
+    comments: list[dict[str, Any]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _set_default_compat_scores(self) -> "SearchMatch":
@@ -238,6 +239,7 @@ class SubmitExecutionResultResponse(BaseModel):
     success: bool
     code_blocks_stored: int
     message: str
+    snippet_name: str | None = None
 
 
 class BulkExecutionResultRequest(BaseModel):
