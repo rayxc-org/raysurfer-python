@@ -1,10 +1,18 @@
 """RaySurfer SDK types - mirrors the backend API types"""
 
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+# Recursive JSON type for arbitrary JSON values
+JsonValue = str | int | float | bool | None | dict[str, "JsonValue"] | list["JsonValue"]
+
+# Dictionary of JSON values (common for request/response payloads and schemas)
+JsonDict = dict[str, JsonValue]
 
 
 class ExecutionState(str, Enum):
@@ -39,8 +47,8 @@ class CodeBlock(BaseModel):
     description: str
     source: str
     entrypoint: str
-    input_schema: dict[str, Any] = Field(default_factory=dict)
-    output_schema: dict[str, Any] = Field(default_factory=dict)
+    input_schema: JsonDict = Field(default_factory=dict)
+    output_schema: JsonDict = Field(default_factory=dict)
     language: str
     language_version: str | None = None
     dependencies: dict[str, str] = Field(default_factory=dict)  # Package name -> version
@@ -54,9 +62,9 @@ class CodeBlock(BaseModel):
 class ExecutionIO(BaseModel):
     """Stores the actual input/output data"""
 
-    input_data: dict[str, Any]
+    input_data: JsonDict
     input_hash: str = ""
-    output_data: Any = None
+    output_data: JsonValue = None
     output_hash: str = ""
     output_type: str = "unknown"
 
@@ -109,7 +117,7 @@ class SearchMatch(BaseModel):
     language: str
     entrypoint: str
     dependencies: dict[str, str] = Field(default_factory=dict)  # Package name -> version
-    comments: list[dict[str, Any]] = Field(default_factory=list)
+    comments: list[JsonDict] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _set_default_compat_scores(self) -> "SearchMatch":
@@ -156,8 +164,8 @@ class FewShotExample(BaseModel):
     """A few-shot example for code generation"""
 
     task: str
-    input_sample: dict[str, Any]
-    output_sample: Any
+    input_sample: JsonDict
+    output_sample: JsonValue
     code_snippet: str
 
 
@@ -318,14 +326,14 @@ class ToolDefinition(BaseModel):
 
     name: str
     description: str
-    parameters: dict[str, Any]
+    parameters: JsonDict
 
 
 class ToolCallRecord(BaseModel):
     """Record of a tool call made during execution."""
 
     tool_name: str
-    arguments: dict[str, Any]
+    arguments: JsonDict
     result: str | None = None
     error: str | None = None
     duration_ms: int = 0

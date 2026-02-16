@@ -1,8 +1,10 @@
 """Types for Claude Agent SDK integration"""
 
-from typing import Any
+from __future__ import annotations
 
 from pydantic import BaseModel, Field
+
+from raysurfer.types import JsonDict
 
 
 class CodeFile(BaseModel):
@@ -13,8 +15,8 @@ class CodeFile(BaseModel):
     source: str  # Full source code
     entrypoint: str  # Function to call
     description: str
-    input_schema: dict[str, Any] = Field(default_factory=dict)
-    output_schema: dict[str, Any] = Field(default_factory=dict)
+    input_schema: JsonDict = Field(default_factory=dict)
+    output_schema: JsonDict = Field(default_factory=dict)
     language: str
     dependencies: dict[str, str] = Field(default_factory=dict)  # Package name -> version
     score: float = 0.0

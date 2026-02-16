@@ -1,12 +1,14 @@
 """RaySurfer SDK client"""
 
+from __future__ import annotations
+
 import asyncio
 import inspect
 import json
 import logging
 import uuid
 from collections.abc import Callable
-from typing import Any
+from types import TracebackType
 
 import httpx
 import websockets
@@ -35,6 +37,8 @@ from raysurfer.types import (
     ExecutionState,
     FewShotExample,
     FileWritten,
+    JsonDict,
+    JsonValue,
     LogFile,
     PublicSnippet,
     RetrieveBestResponse,
@@ -100,7 +104,7 @@ class AsyncRaySurfer:
         else:
             self.snips_desired = snips_desired
         self._client: httpx.AsyncClient | None = None
-        self._registered_tools: dict[str, tuple[ToolDefinition, Callable[..., Any]]] = {}
+        self._registered_tools: dict[str, tuple[ToolDefinition, Callable[..., JsonValue]]] = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
@@ -135,7 +139,12 @@ class AsyncRaySurfer:
     async def __aenter__(self) -> "AsyncRaySurfer":
         return self
 
-    async def __aexit__(self, *args: Any) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         await self.close()
 
     def _workspace_headers(self, workspace_id: str | None) -> dict[str, str] | None:
@@ -145,8 +154,8 @@ class AsyncRaySurfer:
         return {"X-Raysurfer-Workspace-Id": workspace_id}
 
     async def _request(
-        self, method: str, path: str, headers_override: dict[str, str] | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
+        self, method: str, path: str, headers_override: dict[str, str] | None = None, **kwargs: JsonValue
+    ) -> JsonDict:
         client = await self._get_client()
         last_exception: Exception | None = None
 
@@ -206,8 +215,8 @@ class AsyncRaySurfer:
         entrypoint: str,
         language: str,
         description: str = "",
-        input_schema: dict[str, Any] | None = None,
-        output_schema: dict[str, Any] | None = None,
+        input_schema: JsonDict | None = None,
+        output_schema: JsonDict | None = None,
         language_version: str | None = None,
         dependencies: dict[str, str] | None = None,
         tags: list[str] | None = None,
@@ -236,8 +245,8 @@ class AsyncRaySurfer:
         self,
         code_block_id: str,
         triggering_task: str,
-        input_data: dict[str, Any],
-        output_data: Any,
+        input_data: JsonDict,
+        output_data: JsonValue,
         execution_state: ExecutionState = ExecutionState.COMPLETED,
         duration_ms: int = 0,
         error_message: str | None = None,
@@ -344,7 +353,7 @@ class AsyncRaySurfer:
         if file_written is None:
             raise ValueError("Missing required file input: provide file_written or files_written.")
 
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "task": task,
             "file_written": file_written.model_dump(),
             "succeeded": succeeded,
@@ -398,7 +407,7 @@ class AsyncRaySurfer:
             vote_source: Origin of the vote (e.g. "cli", "mcp", "sdk").
             vote_count: Number of votes to apply (default 1).
         """
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "prompts": prompts,
             "files_written": [f.model_dump() for f in files_written],
             "use_raysurfer_ai_voting": use_raysurfer_ai_voting,
@@ -430,7 +439,7 @@ class AsyncRaySurfer:
         top_k: int = 5,
         min_verdict_score: float = 0.3,
         prefer_complete: bool = False,
-        input_schema: dict[str, Any] | None = None,
+        input_schema: JsonDict | None = None,
         workspace_id: str | None = None,
     ) -> SearchResponse:
         """Unified search for cached code snippets.
@@ -630,7 +639,7 @@ class AsyncRaySurfer:
         code_block_name: str,
         code_block_description: str,
         succeeded: bool,
-    ) -> dict[str, Any]:
+    ) -> JsonDict:
         """
         Vote on whether a cached code snippet was useful.
 
@@ -655,8 +664,8 @@ class AsyncRaySurfer:
         execution_id: str,
         triggering_task: str,
         execution_state: ExecutionState,
-        input_data: dict[str, Any],
-        output_data: Any,
+        input_data: JsonDict,
+        output_data: JsonValue,
         code_block_name: str,
         code_block_description: str,
         error_message: str | None = None,
@@ -708,7 +717,7 @@ class AsyncRaySurfer:
     # Execute API (tool calling)
     # =========================================================================
 
-    def tool(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+    def tool(self, fn: Callable[..., JsonValue]) -> Callable[..., JsonValue]:
         """Register a function as a tool for execute().
 
         Introspects the function signature to build a JSON schema.
@@ -724,7 +733,7 @@ class AsyncRaySurfer:
             properties[param_name] = {"type": json_type}
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)
-        schema: dict[str, Any] = {"type": "object", "properties": properties}
+        schema: JsonDict = {"type": "object", "properties": properties}
         if required:
             schema["required"] = required
         tool_def = ToolDefinition(
@@ -768,11 +777,15 @@ class AsyncRaySurfer:
                         arguments = msg.get("arguments", {})
                         tool_entry = self._registered_tools.get(tool_name)
                         if tool_entry is None:
-                            await ws_conn.send(json.dumps({
-                                "type": "tool_result",
-                                "request_id": request_id,
-                                "result": f"Error: unknown tool '{tool_name}'",
-                            }))
+                            await ws_conn.send(
+                                json.dumps(
+                                    {
+                                        "type": "tool_result",
+                                        "request_id": request_id,
+                                        "result": f"Error: unknown tool '{tool_name}'",
+                                    }
+                                )
+                            )
                             continue
                         _, callback = tool_entry
                         try:
@@ -780,17 +793,25 @@ class AsyncRaySurfer:
                                 result = await callback(**arguments)
                             else:
                                 result = callback(**arguments)
-                            await ws_conn.send(json.dumps({
-                                "type": "tool_result",
-                                "request_id": request_id,
-                                "result": str(result),
-                            }))
+                            await ws_conn.send(
+                                json.dumps(
+                                    {
+                                        "type": "tool_result",
+                                        "request_id": request_id,
+                                        "result": str(result),
+                                    }
+                                )
+                            )
                         except Exception as exc:
-                            await ws_conn.send(json.dumps({
-                                "type": "tool_result",
-                                "request_id": request_id,
-                                "result": f"Error: {exc}",
-                            }))
+                            await ws_conn.send(
+                                json.dumps(
+                                    {
+                                        "type": "tool_result",
+                                        "request_id": request_id,
+                                        "result": f"Error: {exc}",
+                                    }
+                                )
+                            )
             except websockets.ConnectionClosed:
                 pass
 
@@ -837,7 +858,7 @@ class AsyncRaySurfer:
             sort_by: Sort order - "upvoted" or "recent".
             language: Filter by programming language.
         """
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "limit": limit,
             "offset": offset,
             "sort_by": sort_by,
@@ -865,7 +886,7 @@ class AsyncRaySurfer:
             limit: Maximum number of results.
             language: Filter by programming language.
         """
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "query": query,
             "limit": limit,
         }
@@ -960,7 +981,12 @@ class RaySurfer:
     def __enter__(self) -> "RaySurfer":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         self.close()
 
     def _workspace_headers(self, workspace_id: str | None) -> dict[str, str] | None:
@@ -970,8 +996,8 @@ class RaySurfer:
         return {"X-Raysurfer-Workspace-Id": workspace_id}
 
     def _request(
-        self, method: str, path: str, headers_override: dict[str, str] | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
+        self, method: str, path: str, headers_override: dict[str, str] | None = None, **kwargs: JsonValue
+    ) -> JsonDict:
         import time as _time
 
         client = self._get_client()
@@ -1033,8 +1059,8 @@ class RaySurfer:
         entrypoint: str,
         language: str,
         description: str = "",
-        input_schema: dict[str, Any] | None = None,
-        output_schema: dict[str, Any] | None = None,
+        input_schema: JsonDict | None = None,
+        output_schema: JsonDict | None = None,
         language_version: str | None = None,
         dependencies: dict[str, str] | None = None,
         tags: list[str] | None = None,
@@ -1063,8 +1089,8 @@ class RaySurfer:
         self,
         code_block_id: str,
         triggering_task: str,
-        input_data: dict[str, Any],
-        output_data: Any,
+        input_data: JsonDict,
+        output_data: JsonValue,
         execution_state: ExecutionState = ExecutionState.COMPLETED,
         duration_ms: int = 0,
         error_message: str | None = None,
@@ -1171,7 +1197,7 @@ class RaySurfer:
         if file_written is None:
             raise ValueError("Missing required file input: provide file_written or files_written.")
 
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "task": task,
             "file_written": file_written.model_dump(),
             "succeeded": succeeded,
@@ -1225,7 +1251,7 @@ class RaySurfer:
             vote_source: Origin of the vote (e.g. "cli", "mcp", "sdk").
             vote_count: Number of votes to apply (default 1).
         """
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "prompts": prompts,
             "files_written": [f.model_dump() for f in files_written],
             "use_raysurfer_ai_voting": use_raysurfer_ai_voting,
@@ -1257,7 +1283,7 @@ class RaySurfer:
         top_k: int = 5,
         min_verdict_score: float = 0.3,
         prefer_complete: bool = False,
-        input_schema: dict[str, Any] | None = None,
+        input_schema: JsonDict | None = None,
         workspace_id: str | None = None,
     ) -> SearchResponse:
         """Unified search for cached code snippets.
@@ -1457,7 +1483,7 @@ class RaySurfer:
         code_block_name: str,
         code_block_description: str,
         succeeded: bool,
-    ) -> dict[str, Any]:
+    ) -> JsonDict:
         """
         Vote on whether a cached code snippet was useful.
 
@@ -1482,8 +1508,8 @@ class RaySurfer:
         execution_id: str,
         triggering_task: str,
         execution_state: ExecutionState,
-        input_data: dict[str, Any],
-        output_data: Any,
+        input_data: JsonDict,
+        output_data: JsonValue,
         code_block_name: str,
         code_block_description: str,
         error_message: str | None = None,
@@ -1535,7 +1561,7 @@ class RaySurfer:
     # Execute API (tool calling)
     # =========================================================================
 
-    def tool(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+    def tool(self, fn: Callable[..., JsonValue]) -> Callable[..., JsonValue]:
         """Register a function as a tool for execute(). Delegates to async client."""
         return self._async_inner.tool(fn)
 
@@ -1569,7 +1595,7 @@ class RaySurfer:
             sort_by: Sort order - "upvoted" or "recent".
             language: Filter by programming language.
         """
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "limit": limit,
             "offset": offset,
             "sort_by": sort_by,
@@ -1597,7 +1623,7 @@ class RaySurfer:
             limit: Maximum number of results.
             language: Filter by programming language.
         """
-        data: dict[str, Any] = {
+        data: JsonDict = {
             "query": query,
             "limit": limit,
         }

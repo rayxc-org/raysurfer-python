@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "raysurfer"
-version = "0.8.3"
+version = "0.8.4"
 # Old description: "Semantic code caching for LLM agents"
 # Old description: "Code reputation layer for AI agents"
 description = "AI maintained skills for vertical agents"

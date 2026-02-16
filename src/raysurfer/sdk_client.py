@@ -16,6 +16,8 @@ Simply swap your import and rename your client:
 Options come directly from claude_agent_sdk - no Raysurfer-specific options needed.
 """
 
+from __future__ import annotations
+
 import atexit
 import logging
 import os
@@ -24,7 +26,8 @@ import shutil
 import tempfile
 import time
 import warnings
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from types import TracebackType
 
 # Isolate temp directory to avoid file watcher conflicts when running
 # nested inside another Claude Code session.
@@ -77,7 +80,8 @@ from claude_agent_sdk import (
 from claude_agent_sdk import ClaudeSDKClient as _BaseClaudeSDKClient
 
 from raysurfer.client import AsyncRaySurfer
-from raysurfer.types import FileWritten, SnipsDesired
+from raysurfer.sdk_types import CodeFile
+from raysurfer.types import FileWritten, JsonDict, SnipsDesired
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +93,7 @@ class _DebugLogger:
         self.enabled = enabled
         self._timers: dict[str, float] = {}
 
-    def log(self, *args: Any) -> None:
+    def log(self, *args: str | int | float | bool) -> None:
         if self.enabled:
             print("[raysurfer]", *args)
 
@@ -103,7 +107,7 @@ class _DebugLogger:
             print(f"[raysurfer] {label}: {elapsed:.2f}ms")
             del self._timers[label]
 
-    def table(self, data: list[dict[str, Any]]) -> None:
+    def table(self, data: list[dict[str, str]]) -> None:
         if self.enabled and data:
             # Simple table output
             for row in data:
@@ -215,7 +219,7 @@ class RaysurferClient:
         self._bash_generated_files: list[str] = []
         self._task_succeeded: bool = False
         self._cache_enabled: bool = False
-        self._cached_code_blocks: list[dict[str, Any]] = []
+        self._cached_code_blocks: list[dict[str, str]] = []
         self._subagent_cache: dict[str, str] = {}
         self._execution_logs: list[str] = []
         self._workspace_id = workspace_id
@@ -251,7 +255,12 @@ class RaysurferClient:
 
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Clean up resources."""
         if self._base_client:
             await self._base_client.__aexit__(exc_type, exc_val, exc_tb)
@@ -349,7 +358,7 @@ class RaysurferClient:
         if self._cache_enabled and self._task_succeeded and self._cached_code_blocks:
             await self._submit_votes()
 
-    def _track_file_modify_tool(self, tool_name: str, tool_input: dict[str, Any]) -> None:
+    def _track_file_modify_tool(self, tool_name: str, tool_input: JsonDict) -> None:
         """Track a file modified by Write, Edit, MultiEdit, or NotebookEdit tools."""
         if tool_name == "Write":
             file_path = tool_input.get("file_path", "")
@@ -586,7 +595,7 @@ class RaysurferClient:
             logger.warning(f"Cache unavailable: {e}")
             return self._options
 
-    def _write_cached_files_to_disk(self, files) -> list[dict[str, str]]:
+    def _write_cached_files_to_disk(self, files: list[CodeFile]) -> list[dict[str, str | float]]:
         """Write cached code files to the working directory."""
         written_files = []
         cwd = self._options.cwd or os.getcwd()
@@ -624,7 +633,7 @@ class RaysurferClient:
 
         return written_files
 
-    def _format_code_snippets(self, files) -> str:
+    def _format_code_snippets(self, files: list[CodeFile]) -> str:
         """Format cached code files as markdown for system prompt."""
         snippets = "\n\n## Cached Code (from Raysurfer)\n\n"
         snippets += "The following pre-validated code is available for this task. "
