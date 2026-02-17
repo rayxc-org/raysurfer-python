@@ -655,6 +655,12 @@ class AsyncRaySurfer:
         }
         return await self._request("POST", "/api/store/cache-usage", json=data)
 
+    async def comment_on_code_snip(self, code_block_id: str, text: str) -> JsonDict:
+        """Add a comment to a cached code snippet."""
+        return await self._request("POST", "/api/store/comment", json={
+            "code_block_id": code_block_id, "text": text,
+        })
+
     # =========================================================================
     # Auto Review API
     # =========================================================================
@@ -1498,6 +1504,12 @@ class RaySurfer:
             "succeeded": succeeded,
         }
         return self._request("POST", "/api/store/cache-usage", json=data)
+
+    def comment_on_code_snip(self, code_block_id: str, text: str) -> JsonDict:
+        """Add a comment to a cached code snippet."""
+        return self._request("POST", "/api/store/comment", json={
+            "code_block_id": code_block_id, "text": text,
+        })
 
     # =========================================================================
     # Auto Review API
