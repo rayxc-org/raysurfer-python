@@ -756,8 +756,11 @@ class AsyncRaySurfer:
     async def execute(
         self,
         task: str,
-        user_code: str,
+        user_code: str | None = None,
         timeout: int = 300,
+        codegen_api_key: str | None = None,
+        codegen_prompt: str | None = None,
+        codegen_model: str = "claude-opus-4-6",
     ) -> ExecuteResult:
         """Execute a task with registered tools in a sandbox.
 
@@ -765,13 +768,41 @@ class AsyncRaySurfer:
             task: The task to execute.
             user_code: Python code generated client-side to run directly.
             timeout: Maximum execution time in seconds.
+            codegen_api_key: Provider API key used inside sandbox codegen mode.
+            codegen_prompt: User-provided prompt for sandbox code generation.
+            codegen_model: Provider model name for sandbox code generation.
         """
-        if not isinstance(user_code, str) or not user_code.strip():
+        has_user_code = isinstance(user_code, str) and bool(user_code.strip())
+        has_codegen = codegen_api_key is not None or codegen_prompt is not None
+        if has_user_code == has_codegen:
             raise ValueError(
-                f"Invalid user_code value: {user_code!r}. "
-                "Expected a non-empty Python script string. "
+                "Invalid execute mode: provide exactly one of user_code or "
+                "(codegen_api_key + codegen_prompt). "
+                f"Received user_code={user_code!r}, "
+                f"codegen_api_key={codegen_api_key is not None}, "
+                f"codegen_prompt={codegen_prompt!r}. "
                 "Docs: https://docs.raysurfer.com/sdk/python#programmatic-tool-calling"
             )
+
+        if has_codegen:
+            if not isinstance(codegen_api_key, str) or not codegen_api_key.strip():
+                raise ValueError(
+                    f"Invalid codegen_api_key value: {codegen_api_key!r}. "
+                    "Expected a non-empty API key string. "
+                    "Docs: https://docs.raysurfer.com/sdk/python#programmatic-tool-calling"
+                )
+            if not isinstance(codegen_prompt, str) or not codegen_prompt.strip():
+                raise ValueError(
+                    f"Invalid codegen_prompt value: {codegen_prompt!r}. "
+                    "Expected a non-empty prompt string. "
+                    "Docs: https://docs.raysurfer.com/sdk/python#programmatic-tool-calling"
+                )
+            if not isinstance(codegen_model, str) or not codegen_model.strip():
+                raise ValueError(
+                    f"Invalid codegen_model value: {codegen_model!r}. "
+                    "Expected a non-empty model string. "
+                    "Docs: https://docs.raysurfer.com/sdk/python#programmatic-tool-calling"
+                )
 
         session_id = str(uuid.uuid4())
         ws_url = f"{self.base_url.replace('http', 'ws')}/api/execute/ws/{session_id}"
@@ -835,16 +866,25 @@ class AsyncRaySurfer:
 
         try:
             tool_schemas = [defn.model_dump() for defn, _ in self._registered_tools.values()]
+            request_payload: JsonDict = {
+                "task": task,
+                "tools": tool_schemas,
+                "session_id": session_id,
+                "timeout_seconds": timeout,
+            }
+            if has_user_code:
+                request_payload["user_code"] = user_code or ""
+            else:
+                request_payload["codegen"] = {
+                    "provider": "anthropic",
+                    "api_key": codegen_api_key or "",
+                    "model": codegen_model,
+                    "prompt": codegen_prompt or "",
+                }
             result = await self._request(
                 "POST",
                 "/api/execute/run",
-                json={
-                    "task": task,
-                    "tools": tool_schemas,
-                    "session_id": session_id,
-                    "timeout_seconds": timeout,
-                    "user_code": user_code,
-                },
+                json=request_payload,
             )
             return ExecuteResult(**result)
         finally:
@@ -863,6 +903,23 @@ class AsyncRaySurfer:
     ) -> ExecuteResult:
         """Execute client-generated Python code in the remote sandbox with tool callbacks."""
         return await self.execute(task=task, user_code=user_code, timeout=timeout)
+
+    async def execute_with_sandbox_codegen(
+        self,
+        task: str,
+        codegen_api_key: str,
+        codegen_prompt: str,
+        timeout: int = 300,
+        codegen_model: str = "claude-opus-4-6",
+    ) -> ExecuteResult:
+        """Generate Python code inside the sandbox, then execute it with tool callbacks."""
+        return await self.execute(
+            task=task,
+            timeout=timeout,
+            codegen_api_key=codegen_api_key,
+            codegen_prompt=codegen_prompt,
+            codegen_model=codegen_model,
+        )
 
     # =========================================================================
     # Public Snippet Browsing (no API key required)
@@ -1602,8 +1659,11 @@ class RaySurfer:
     def execute(
         self,
         task: str,
-        user_code: str,
+        user_code: str | None = None,
         timeout: int = 300,
+        codegen_api_key: str | None = None,
+        codegen_prompt: str | None = None,
+        codegen_model: str = "claude-opus-4-6",
     ) -> ExecuteResult:
         """Execute a task with registered tools in a sandbox."""
         return asyncio.get_event_loop().run_until_complete(
@@ -1611,6 +1671,9 @@ class RaySurfer:
                 task=task,
                 user_code=user_code,
                 timeout=timeout,
+                codegen_api_key=codegen_api_key,
+                codegen_prompt=codegen_prompt,
+                codegen_model=codegen_model,
             )
         )
 
@@ -1623,6 +1686,25 @@ class RaySurfer:
         """Execute client-generated Python code in the remote sandbox with tool callbacks."""
         return asyncio.get_event_loop().run_until_complete(
             self._async_inner.execute_generated_code(task=task, user_code=user_code, timeout=timeout)
+        )
+
+    def execute_with_sandbox_codegen(
+        self,
+        task: str,
+        codegen_api_key: str,
+        codegen_prompt: str,
+        timeout: int = 300,
+        codegen_model: str = "claude-opus-4-6",
+    ) -> ExecuteResult:
+        """Generate Python code inside the sandbox, then execute it with tool callbacks."""
+        return asyncio.get_event_loop().run_until_complete(
+            self._async_inner.execute_with_sandbox_codegen(
+                task=task,
+                codegen_api_key=codegen_api_key,
+                codegen_prompt=codegen_prompt,
+                timeout=timeout,
+                codegen_model=codegen_model,
+            )
         )
 
     # =========================================================================

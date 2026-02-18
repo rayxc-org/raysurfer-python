@@ -3,3 +3,5 @@ package-lock.json
 *.docx
 agent/custom_scripts/
 .claude/settings*
+
+.entire/

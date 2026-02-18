@@ -134,3 +134,5 @@ Thumbs.db
 # Listener logs with personal email data
 agent/custom_scripts/listeners/.logs/
 agent/custom_scripts/listeners/.logs/*.jsonl
+
+.entire/

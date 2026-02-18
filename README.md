@@ -352,7 +352,9 @@ client = RaySurfer(api_key="...", public_snips=True)
 
 ## Programmatic Tool Calling
 
-Register local tools and let the server generate + execute code that calls them:
+Register local tools, then either:
+1) pass in `user_code` (primary mode), or
+2) generate code inside the sandbox with your own provider key + prompt (optional mode).
 
 ```python
 import asyncio
@@ -371,10 +373,18 @@ async def main():
         """Multiply two numbers together."""
         return a * b
 
-    result = await rs.execute("Add 5 and 3, then multiply the result by 2")
+    user_code = """
+intermediate = add(5, 3)
+final = multiply(intermediate, 2)
+print(final)
+"""
+    result = await rs.execute(
+        "Add 5 and 3, then multiply the result by 2",
+        user_code=user_code,
+    )
     print(result.result)       # "16"
     print(result.tool_calls)   # [ToolCallRecord(tool_name='add', ...), ToolCallRecord(tool_name='multiply', ...)]
-    print(result.cache_hit)    # True on subsequent runs
+    print(result.cache_hit)    # False (reserved field for execute)
 
 asyncio.run(main())
 ```
@@ -384,7 +394,7 @@ The `@rs.tool` decorator introspects your function signature to build a JSON sch
 ### How It Works
 
 1. SDK connects a WebSocket to the server for tool call routing
-2. Server generates Python code (or reuses reference code from a similar prior run)
+2. Your app sends either `user_code` (primary mode) or `codegen_*` inputs (optional mode) to `/api/execute/run`
 3. Code runs in a sandboxed environment — tool calls are routed back to your local functions via WebSocket
 4. Results are returned with full tool call history
 
@@ -393,8 +403,16 @@ The `@rs.tool` decorator introspects your function signature to build a JSON sch
 ```python
 result = await rs.execute(
     "Your task description",
-    timeout=300,            # Max execution time in seconds (default 300)
-    force_regenerate=False, # Skip cache and regenerate code (default False)
+    user_code="print(add(1, 2))",  # Primary mode
+    timeout=300,                    # Max execution time in seconds (default 300)
+)
+
+# Optional mode: generate code in sandbox using your own key + prompt
+result = await rs.execute(
+    "Your task description",
+    codegen_api_key="your_anthropic_key",
+    codegen_prompt="Write Python code that uses add(a, b) and prints the result for 2 + 3.",
+    codegen_model="claude-opus-4-6",
 )
 ```
 
@@ -406,7 +424,7 @@ result = await rs.execute(
 | `result` | `str \| None` | Stdout output from the script |
 | `exit_code` | `int` | Process exit code (0 = success) |
 | `duration_ms` | `int` | Total execution time |
-| `cache_hit` | `bool` | Whether reference code was found from a prior run |
+| `cache_hit` | `bool` | Reserved field (currently always `False` for execute) |
 | `error` | `str \| None` | Error message if exit_code != 0 |
 | `tool_calls` | `list[ToolCallRecord]` | All tool calls made during execution |
 
