@@ -438,6 +438,7 @@ class AsyncRaySurfer:
         task: str,
         top_k: int = 5,
         min_verdict_score: float = 0.3,
+        min_human_upvotes: int = 0,
         prefer_complete: bool = False,
         input_schema: JsonDict | None = None,
         workspace_id: str | None = None,
@@ -448,6 +449,7 @@ class AsyncRaySurfer:
             task: The task to search for.
             top_k: Maximum number of results to return.
             min_verdict_score: Minimum verdict score threshold.
+            min_human_upvotes: Minimum number of human upvotes required.
             prefer_complete: Prefer complete code blocks.
             input_schema: Optional input schema for filtering.
             workspace_id: Override client-level workspace_id for this request.
@@ -456,6 +458,7 @@ class AsyncRaySurfer:
             "task": task,
             "top_k": top_k,
             "min_verdict_score": min_verdict_score,
+            "min_human_upvotes": min_human_upvotes,
             "prefer_complete": prefer_complete,
             "input_schema": input_schema,
         }
@@ -1288,6 +1291,7 @@ class RaySurfer:
         task: str,
         top_k: int = 5,
         min_verdict_score: float = 0.3,
+        min_human_upvotes: int = 0,
         prefer_complete: bool = False,
         input_schema: JsonDict | None = None,
         workspace_id: str | None = None,
@@ -1298,6 +1302,7 @@ class RaySurfer:
             task: The task to search for.
             top_k: Maximum number of results to return.
             min_verdict_score: Minimum verdict score threshold.
+            min_human_upvotes: Minimum number of human upvotes required.
             prefer_complete: Prefer complete code blocks.
             input_schema: Optional input schema for filtering.
             workspace_id: Override client-level workspace_id for this request.
@@ -1306,6 +1311,7 @@ class RaySurfer:
             "task": task,
             "top_k": top_k,
             "min_verdict_score": min_verdict_score,
+            "min_human_upvotes": min_human_upvotes,
             "prefer_complete": prefer_complete,
             "input_schema": input_schema,
         }
