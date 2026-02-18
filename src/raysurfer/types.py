@@ -6,10 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
-
-# Recursive JSON type for arbitrary JSON values
-JsonValue = str | int | float | bool | None | dict[str, "JsonValue"] | list["JsonValue"]
+from pydantic import BaseModel, Field, JsonValue, model_validator
 
 # Dictionary of JSON values (common for request/response payloads and schemas)
 JsonDict = dict[str, JsonValue]

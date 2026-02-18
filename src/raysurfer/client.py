@@ -756,16 +756,23 @@ class AsyncRaySurfer:
     async def execute(
         self,
         task: str,
+        user_code: str,
         timeout: int = 300,
-        force_regenerate: bool = False,
     ) -> ExecuteResult:
-        """Execute a task with registered tools, using cached code when available.
+        """Execute a task with registered tools in a sandbox.
 
         Args:
             task: The task to execute.
+            user_code: Python code generated client-side to run directly.
             timeout: Maximum execution time in seconds.
-            force_regenerate: Skip cache and regenerate code.
         """
+        if not isinstance(user_code, str) or not user_code.strip():
+            raise ValueError(
+                f"Invalid user_code value: {user_code!r}. "
+                "Expected a non-empty Python script string. "
+                "Docs: https://docs.raysurfer.com/sdk/python#programmatic-tool-calling"
+            )
+
         session_id = str(uuid.uuid4())
         ws_url = f"{self.base_url.replace('http', 'ws')}/api/execute/ws/{session_id}"
 
@@ -836,7 +843,7 @@ class AsyncRaySurfer:
                     "tools": tool_schemas,
                     "session_id": session_id,
                     "timeout_seconds": timeout,
-                    "force_regenerate": force_regenerate,
+                    "user_code": user_code,
                 },
             )
             return ExecuteResult(**result)
@@ -847,6 +854,15 @@ class AsyncRaySurfer:
             except asyncio.CancelledError:
                 pass
             await ws_conn.close()
+
+    async def execute_generated_code(
+        self,
+        task: str,
+        user_code: str,
+        timeout: int = 300,
+    ) -> ExecuteResult:
+        """Execute client-generated Python code in the remote sandbox with tool callbacks."""
+        return await self.execute(task=task, user_code=user_code, timeout=timeout)
 
     # =========================================================================
     # Public Snippet Browsing (no API key required)
@@ -1586,12 +1602,27 @@ class RaySurfer:
     def execute(
         self,
         task: str,
+        user_code: str,
         timeout: int = 300,
-        force_regenerate: bool = False,
     ) -> ExecuteResult:
-        """Execute a task with registered tools, using cached code when available."""
+        """Execute a task with registered tools in a sandbox."""
         return asyncio.get_event_loop().run_until_complete(
-            self._async_inner.execute(task=task, timeout=timeout, force_regenerate=force_regenerate)
+            self._async_inner.execute(
+                task=task,
+                user_code=user_code,
+                timeout=timeout,
+            )
+        )
+
+    def execute_generated_code(
+        self,
+        task: str,
+        user_code: str,
+        timeout: int = 300,
+    ) -> ExecuteResult:
+        """Execute client-generated Python code in the remote sandbox with tool callbacks."""
+        return asyncio.get_event_loop().run_until_complete(
+            self._async_inner.execute_generated_code(task=task, user_code=user_code, timeout=timeout)
         )
 
     # =========================================================================
