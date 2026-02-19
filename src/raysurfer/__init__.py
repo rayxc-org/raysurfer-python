@@ -21,6 +21,7 @@ Set RAYSURFER_API_KEY to enable caching.
 # Main client
 # Direct API clients (for advanced use cases)
 from raysurfer._version import __version__  # noqa: E402
+from raysurfer.agent import AsyncCodegenApp, CodegenApp
 from raysurfer.client import AsyncRaySurfer, RaySurfer
 
 # Exceptions
@@ -79,6 +80,9 @@ from raysurfer.types import (
 )
 
 __all__ = [
+    # High-level app wrappers
+    "CodegenApp",
+    "AsyncCodegenApp",
     # Main client
     "RaysurferClient",
     # Re-exported from Claude Agent SDK (use these directly)
