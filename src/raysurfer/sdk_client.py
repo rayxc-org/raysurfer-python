@@ -201,6 +201,7 @@ class RaysurferClient:
         workspace_id: str | None = None,
         debug: bool = False,
         public_snips: bool = False,
+        agent_id: str | None = None,
     ):
         """
         Initialize RaysurferClient.
@@ -210,6 +211,7 @@ class RaysurferClient:
             workspace_id: Workspace ID for per-customer isolation (enterprise only)
             debug: Enable debug logging - also enabled via RAYSURFER_DEBUG=true env var
             public_snips: Include community-contributed public snippets in search results
+            agent_id: Optional agent identifier for agent-scoped snippet isolation
         """
         self._options = options or ClaudeAgentOptions()
         self._base_client: _BaseClaudeSDKClient | None = None
@@ -224,6 +226,7 @@ class RaysurferClient:
         self._execution_logs: list[str] = []
         self._workspace_id = workspace_id
         self._public_snips = public_snips
+        self._agent_id = agent_id
         # Initialize debug logger
         debug_enabled = debug or os.environ.get("RAYSURFER_DEBUG", "").lower() == "true"
         self._debug = _DebugLogger(debug_enabled)
@@ -250,6 +253,7 @@ class RaysurferClient:
                 workspace_id=self._workspace_id,
                 snips_desired=snips_desired,
                 public_snips=self._public_snips,
+                agent_id=self._agent_id,
             )
             await self._raysurfer.__aenter__()
 

@@ -79,6 +79,7 @@ class AsyncRaySurfer:
         workspace_id: str | None = None,
         snips_desired: SnipsDesired | str | None = None,
         public_snips: bool = False,
+        agent_id: str | None = None,
     ):
         """
         Initialize the RaySurfer async client.
@@ -91,6 +92,7 @@ class AsyncRaySurfer:
             workspace_id: Optional workspace ID for client-specific namespace (enterprise only)
             snips_desired: Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only)
             public_snips: Include community-contributed public snippets in search results
+            agent_id: Optional agent identifier for agent-scoped snippet isolation
         """
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -98,6 +100,7 @@ class AsyncRaySurfer:
         self.organization_id = organization_id
         self.workspace_id = workspace_id
         self.public_snips = public_snips
+        self.agent_id = agent_id
         # Convert string to SnipsDesired if needed
         if isinstance(snips_desired, str):
             self.snips_desired = SnipsDesired(snips_desired) if snips_desired else None
@@ -124,6 +127,8 @@ class AsyncRaySurfer:
                 headers["X-Raysurfer-Public-Snips"] = "true"
             # SDK version for tracking
             headers["X-Raysurfer-SDK-Version"] = f"python/{__version__}"
+            if self.agent_id:
+                headers["X-Raysurfer-Agent-Id"] = self.agent_id
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers=headers,
@@ -995,6 +1000,7 @@ class RaySurfer:
         workspace_id: str | None = None,
         snips_desired: SnipsDesired | str | None = None,
         public_snips: bool = False,
+        agent_id: str | None = None,
     ):
         """
         Initialize the RaySurfer sync client.
@@ -1007,6 +1013,7 @@ class RaySurfer:
             workspace_id: Optional workspace ID for client-specific namespace (enterprise only)
             snips_desired: Scope of private snippets - "company" (Team/Enterprise) or "client" (Enterprise only)
             public_snips: Include community-contributed public snippets in search results
+            agent_id: Optional agent identifier for agent-scoped snippet isolation
         """
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -1014,6 +1021,7 @@ class RaySurfer:
         self.organization_id = organization_id
         self.workspace_id = workspace_id
         self.public_snips = public_snips
+        self.agent_id = agent_id
         # Convert string to SnipsDesired if needed
         if isinstance(snips_desired, str):
             self.snips_desired = SnipsDesired(snips_desired) if snips_desired else None
@@ -1028,6 +1036,7 @@ class RaySurfer:
             workspace_id=workspace_id,
             snips_desired=snips_desired,
             public_snips=public_snips,
+            agent_id=agent_id,
         )
 
     def _get_client(self) -> httpx.Client:
@@ -1048,6 +1057,8 @@ class RaySurfer:
                 headers["X-Raysurfer-Public-Snips"] = "true"
             # SDK version for tracking
             headers["X-Raysurfer-SDK-Version"] = f"python/{__version__}"
+            if self.agent_id:
+                headers["X-Raysurfer-Agent-Id"] = self.agent_id
             self._client = httpx.Client(
                 base_url=self.base_url,
                 headers=headers,

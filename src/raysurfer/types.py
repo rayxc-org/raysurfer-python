@@ -54,6 +54,7 @@ class CodeBlock(BaseModel):
     example_queries: list[str] | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    agent_id: str | None = None
 
 
 class ExecutionIO(BaseModel):
@@ -115,6 +116,7 @@ class SearchMatch(BaseModel):
     entrypoint: str
     dependencies: dict[str, str] = Field(default_factory=dict)  # Package name -> version
     comments: list[JsonDict] = Field(default_factory=list)
+    agent_id: str | None = None
 
     @model_validator(mode="after")
     def _set_default_compat_scores(self) -> "SearchMatch":

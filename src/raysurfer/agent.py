@@ -41,6 +41,7 @@ class AsyncCodegenApp:
         workspace_id: str | None = None,
         snips_desired: SnipsDesired | str | None = None,
         public_snips: bool = False,
+        agent_id: str | None = None,
         codegen_api_key: str | None = None,
         codegen_model: str = DEFAULT_CODEGEN_MODEL,
         execution_timeout_seconds: int = DEFAULT_EXECUTION_TIMEOUT_SECONDS,
@@ -55,6 +56,7 @@ class AsyncCodegenApp:
             workspace_id=workspace_id,
             snips_desired=snips_desired,
             public_snips=public_snips,
+            agent_id=agent_id,
         )
         self._default_codegen_api_key = codegen_api_key
         self._default_codegen_model = codegen_model
@@ -151,6 +153,7 @@ class CodegenApp:
         workspace_id: str | None = None,
         snips_desired: SnipsDesired | str | None = None,
         public_snips: bool = False,
+        agent_id: str | None = None,
         codegen_api_key: str | None = None,
         codegen_model: str = DEFAULT_CODEGEN_MODEL,
         execution_timeout_seconds: int = DEFAULT_EXECUTION_TIMEOUT_SECONDS,
@@ -165,6 +168,7 @@ class CodegenApp:
             workspace_id=workspace_id,
             snips_desired=snips_desired,
             public_snips=public_snips,
+            agent_id=agent_id,
         )
         self._default_codegen_api_key = codegen_api_key
         self._default_codegen_model = codegen_model
