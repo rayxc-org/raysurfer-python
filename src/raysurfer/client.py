@@ -900,6 +900,104 @@ class AsyncRaySurfer:
                 pass
             await ws_conn.close()
 
+    async def run_script(
+        self,
+        s3_key: str,
+        params: dict[str, str] | None = None,
+        timeout: int = 300,
+    ) -> ExecuteResult:
+        """Execute an S3-stored script in a remote sandbox with tool callbacks.
+
+        Args:
+            s3_key: S3 key of the script to execute.
+            params: Optional parameters injected as environment variables.
+            timeout: Maximum execution time in seconds.
+        """
+        session_id = str(uuid.uuid4())
+        ws_url = f"{self.base_url.replace('http', 'ws')}/api/execute/ws/{session_id}"
+
+        ws_headers: dict[str, str] = {}
+        if self.api_key:
+            ws_headers["Authorization"] = f"Bearer {self.api_key}"
+
+        ws_conn = await websockets.connect(ws_url, additional_headers=ws_headers)
+
+        async def _handle_tool_calls() -> None:
+            """Listen for tool_call messages on the WebSocket and dispatch to registered callbacks."""
+            try:
+                async for raw_msg in ws_conn:
+                    msg = json.loads(raw_msg)
+                    if msg.get("type") == "tool_call":
+                        request_id = msg["request_id"]
+                        tool_name = msg["tool_name"]
+                        arguments = msg.get("arguments", {})
+                        tool_entry = self._registered_tools.get(tool_name)
+                        if tool_entry is None:
+                            await ws_conn.send(
+                                json.dumps(
+                                    {
+                                        "type": "tool_result",
+                                        "request_id": request_id,
+                                        "result": f"Error: unknown tool '{tool_name}'",
+                                    }
+                                )
+                            )
+                            continue
+                        _, callback = tool_entry
+                        try:
+                            if inspect.iscoroutinefunction(callback):
+                                result = await callback(**arguments)
+                            else:
+                                result = callback(**arguments)
+                            await ws_conn.send(
+                                json.dumps(
+                                    {
+                                        "type": "tool_result",
+                                        "request_id": request_id,
+                                        "result": str(result),
+                                    }
+                                )
+                            )
+                        except Exception as exc:
+                            await ws_conn.send(
+                                json.dumps(
+                                    {
+                                        "type": "tool_result",
+                                        "request_id": request_id,
+                                        "result": f"Error: {exc}",
+                                    }
+                                )
+                            )
+            except websockets.ConnectionClosed:
+                pass
+
+        listener_task = asyncio.create_task(_handle_tool_calls())
+
+        try:
+            tool_schemas = [defn.model_dump() for defn, _ in self._registered_tools.values()]
+            request_payload: JsonDict = {
+                "s3_key": s3_key,
+                "tools": tool_schemas,
+                "session_id": session_id,
+                "timeout_seconds": timeout,
+            }
+            if params:
+                request_payload["params"] = params
+
+            result = await self._request(
+                "POST",
+                "/api/execute/run-script",
+                json=request_payload,
+            )
+            return ExecuteResult(**result)
+        finally:
+            listener_task.cancel()
+            try:
+                await listener_task
+            except asyncio.CancelledError:
+                pass
+            await ws_conn.close()
+
     async def execute_generated_code(
         self,
         task: str,
@@ -1686,6 +1784,17 @@ class RaySurfer:
                 codegen_prompt=codegen_prompt,
                 codegen_model=codegen_model,
             )
+        )
+
+    def run_script(
+        self,
+        s3_key: str,
+        params: dict[str, str] | None = None,
+        timeout: int = 300,
+    ) -> ExecuteResult:
+        """Execute an S3-stored script in a remote sandbox with tool callbacks."""
+        return asyncio.get_event_loop().run_until_complete(
+            self._async_inner.run_script(s3_key=s3_key, params=params, timeout=timeout)
         )
 
     def execute_generated_code(
