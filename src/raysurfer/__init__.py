@@ -24,6 +24,7 @@ from raysurfer._version import __version__  # noqa: E402
 from raysurfer.accessible import agent_accessible, publish_function_registry
 from raysurfer.agent import AsyncCodegenApp, CodegenApp
 from raysurfer.client import AsyncRaySurfer, RaySurfer
+from raysurfer.config import AgentAccessRules, RaysurferConfig, load_config
 
 # Exceptions
 from raysurfer.exceptions import (
@@ -87,6 +88,9 @@ __all__ = [
     # Agent-accessible decorator
     "agent_accessible",
     "publish_function_registry",
+    "load_config",
+    "AgentAccessRules",
+    "RaysurferConfig",
     # Main client
     "RaysurferClient",
     # Re-exported from Claude Agent SDK (use these directly)

@@ -21,6 +21,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import random
 import re
 import shutil
 import tempfile
@@ -137,6 +138,51 @@ DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com"
 
 # Maximum file size (in bytes) that will be cached from Bash-generated output
 MAX_CACHEABLE_FILE_SIZE = 100_000
+DEFAULT_RUN_PARSE_SAMPLE_RATE = 1.0
+RUN_PARSE_SAMPLE_RATE_ENV_VAR = "RAYSURFER_RUN_PARSE_SAMPLE_RATE"
+
+
+def _validate_run_parse_sample_rate(sample_rate: float, source: str) -> float:
+    """Validate run-parse sampling rate (0.0 to 1.0 inclusive)."""
+    if sample_rate < 0.0 or sample_rate > 1.0:
+        raise ValueError(f"{source} must be between 0.0 and 1.0 inclusive; got {sample_rate}.")
+    return sample_rate
+
+
+def _resolve_run_parse_sample_rate(configured_sample_rate: float | None) -> float:
+    """Resolve sampling rate from explicit config, env var, or default."""
+    if configured_sample_rate is not None:
+        return _validate_run_parse_sample_rate(configured_sample_rate, "run_parse_sample_rate")
+
+    raw_env_value = os.environ.get(RUN_PARSE_SAMPLE_RATE_ENV_VAR)
+    if raw_env_value is None or raw_env_value.strip() == "":
+        return DEFAULT_RUN_PARSE_SAMPLE_RATE
+
+    try:
+        parsed_sample_rate = float(raw_env_value)
+    except ValueError:
+        warnings.warn(
+            (
+                f"{RUN_PARSE_SAMPLE_RATE_ENV_VAR}={raw_env_value!r} is invalid. "
+                "Expected a number between 0.0 and 1.0 inclusive. "
+                f"Falling back to {DEFAULT_RUN_PARSE_SAMPLE_RATE}."
+            ),
+            stacklevel=2,
+        )
+        return DEFAULT_RUN_PARSE_SAMPLE_RATE
+
+    if parsed_sample_rate < 0.0 or parsed_sample_rate > 1.0:
+        warnings.warn(
+            (
+                f"{RUN_PARSE_SAMPLE_RATE_ENV_VAR}={raw_env_value!r} is out of range. "
+                "Expected a number between 0.0 and 1.0 inclusive. "
+                f"Falling back to {DEFAULT_RUN_PARSE_SAMPLE_RATE}."
+            ),
+            stacklevel=2,
+        )
+        return DEFAULT_RUN_PARSE_SAMPLE_RATE
+
+    return parsed_sample_rate
 
 
 class RaysurferClient:
@@ -202,6 +248,7 @@ class RaysurferClient:
         debug: bool = False,
         public_snips: bool = False,
         agent_id: str | None = None,
+        run_parse_sample_rate: float | None = None,
     ):
         """
         Initialize RaysurferClient.
@@ -212,6 +259,8 @@ class RaysurferClient:
             debug: Enable debug logging - also enabled via RAYSURFER_DEBUG=true env var
             public_snips: Include community-contributed public snippets in search results
             agent_id: Optional agent identifier for agent-scoped snippet isolation
+            run_parse_sample_rate: Fraction of successful runs to parse for AI voting (0.0-1.0).
+                Defaults to env var RAYSURFER_RUN_PARSE_SAMPLE_RATE or 1.0.
         """
         self._options = options or ClaudeAgentOptions()
         self._base_client: _BaseClaudeSDKClient | None = None
@@ -227,6 +276,8 @@ class RaysurferClient:
         self._workspace_id = workspace_id
         self._public_snips = public_snips
         self._agent_id = agent_id
+        self._run_parse_sample_rate = _resolve_run_parse_sample_rate(run_parse_sample_rate)
+        self._parse_this_run_for_ai_voting = True
         # Initialize debug logger
         debug_enabled = debug or os.environ.get("RAYSURFER_DEBUG", "").lower() == "true"
         self._debug = _DebugLogger(debug_enabled)
@@ -288,6 +339,10 @@ class RaysurferClient:
         self._cached_code_blocks = []
         self._subagent_cache = {}
         self._execution_logs = []
+        self._parse_this_run_for_ai_voting = self._should_parse_this_run_for_ai_voting()
+
+        self._debug.log("Run parse sample rate:", self._run_parse_sample_rate)
+        self._debug.log("Parse this run for AI voting:", self._parse_this_run_for_ai_voting)
 
         # Pre-fetch cache for subagents if this is a multi-agent system
         if self._options.agents:
@@ -336,7 +391,7 @@ class RaysurferClient:
                     if isinstance(block, ToolResultBlock):
                         # Capture tool result content as execution log
                         content_str = str(block.content) if hasattr(block, "content") else ""
-                        if content_str:
+                        if content_str and self._parse_this_run_for_ai_voting:
                             self._execution_logs.append(content_str[:5000])
                         if last_bash_command:
                             self._extract_files_from_bash_output(
@@ -409,6 +464,14 @@ class RaysurferClient:
                 ext = os.path.splitext(match)[1].lower()
                 if ext in self.TRACKABLE_EXTENSIONS:
                     self._bash_generated_files.append(match)
+
+    def _should_parse_this_run_for_ai_voting(self) -> bool:
+        """Return whether this run should include AI parsing/voting based on sample rate."""
+        if self._run_parse_sample_rate >= 1.0:
+            return True
+        if self._run_parse_sample_rate <= 0.0:
+            return False
+        return random.random() < self._run_parse_sample_rate
 
     def _extract_files_from_bash_output(self, command: str, output: str) -> None:
         """Extract files mentioned in Bash command output."""
@@ -661,8 +724,15 @@ class RaysurferClient:
             self._debug.time("Cache upload")
             self._debug.log(f"Uploading {len(self._generated_files)} files to cache")
 
+            if not self._parse_this_run_for_ai_voting:
+                self._debug.log("Skipping AI voting parse for this run due sampling")
+
             # Join captured execution logs for vote context
-            execution_logs = "\n---\n".join(self._execution_logs) if self._execution_logs else None
+            execution_logs = (
+                "\n---\n".join(self._execution_logs)
+                if self._parse_this_run_for_ai_voting and self._execution_logs
+                else None
+            )
             if execution_logs:
                 self._debug.log(f"Including {len(self._execution_logs)} execution log entries")
 
@@ -672,7 +742,7 @@ class RaysurferClient:
                     task=self._current_query,
                     file_written=file,
                     succeeded=self._task_succeeded,
-                    use_raysurfer_ai_voting=True,
+                    use_raysurfer_ai_voting=self._parse_this_run_for_ai_voting,
                     execution_logs=execution_logs,
                 )
                 total_stored += result.code_blocks_stored
@@ -688,6 +758,10 @@ class RaysurferClient:
     async def _submit_votes(self) -> None:
         """Submit thumbs up votes for cached code blocks that helped complete the task."""
         if not self._raysurfer or not self._current_query:
+            return
+
+        if not self._parse_this_run_for_ai_voting:
+            self._debug.log("Skipping cached block votes for this run due sampling")
             return
 
         for block in self._cached_code_blocks:

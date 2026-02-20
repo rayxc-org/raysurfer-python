@@ -238,6 +238,9 @@ class SubmitExecutionResultRequest(BaseModel):
     succeeded: bool
     use_raysurfer_ai_voting: bool = True
     user_vote: int | None = None
+    dependencies: dict[str, str] | None = None
+    tags: list[str] = Field(default_factory=list)
+    agent_id: str | None = None
 
 
 class SubmitExecutionResultResponse(BaseModel):
