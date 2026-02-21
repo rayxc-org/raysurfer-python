@@ -279,7 +279,7 @@ class AsyncRaySurfer:
         result = await self._request("POST", "/api/store/execution", json=data)
         return StoreExecutionResponse(**result)
 
-    async def upload_new_code_snip(
+    async def upload(
         self,
         task: str,
         file_written: FileWritten | None = None,
@@ -335,7 +335,7 @@ class AsyncRaySurfer:
             else:
                 responses: list[SubmitExecutionResultResponse] = []
                 for file in files_written:
-                    response = await self.upload_new_code_snip(
+                    response = await self.upload(
                         task=task,
                         file_written=file,
                         succeeded=succeeded,
@@ -388,7 +388,8 @@ class AsyncRaySurfer:
         )
         return SubmitExecutionResultResponse(**result)
 
-    # Backwards-compatible alias
+    # Backwards-compatible aliases
+    upload_new_code_snip = upload
     upload_new_code_snips = upload_new_code_snip
 
     async def upload_bulk_code_snips(
@@ -889,6 +890,10 @@ class AsyncRaySurfer:
                 "session_id": session_id,
                 "timeout_seconds": timeout,
             }
+            if self.organization_id is not None:
+                request_payload["org_id"] = self.organization_id
+            if self.workspace_id is not None:
+                request_payload["workspace_id"] = self.workspace_id
             if has_user_code:
                 request_payload["user_code"] = user_code or ""
             else:
@@ -1223,7 +1228,7 @@ class RaySurfer:
         result = self._request("POST", "/api/store/execution", json=data)
         return StoreExecutionResponse(**result)
 
-    def upload_new_code_snip(
+    def upload(
         self,
         task: str,
         file_written: FileWritten | None = None,
@@ -1279,7 +1284,7 @@ class RaySurfer:
             else:
                 responses: list[SubmitExecutionResultResponse] = []
                 for file in files_written:
-                    response = self.upload_new_code_snip(
+                    response = self.upload(
                         task=task,
                         file_written=file,
                         succeeded=succeeded,
@@ -1332,7 +1337,8 @@ class RaySurfer:
         )
         return SubmitExecutionResultResponse(**result)
 
-    # Backwards-compatible alias
+    # Backwards-compatible aliases
+    upload_new_code_snip = upload
     upload_new_code_snips = upload_new_code_snip
 
     def upload_bulk_code_snips(

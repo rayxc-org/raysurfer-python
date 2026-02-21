@@ -33,6 +33,7 @@ class SupportsRegistryClient(Protocol):
         succeeded: bool,
         use_raysurfer_ai_voting: bool = True,
         tags: list[str] | None = None,
+        workspace_id: str | None = None,
     ) -> object:
         """Upload a snippet and return a response object with snippet_name."""
 
@@ -61,12 +62,59 @@ def _json_safe(value: object) -> object:
     return repr(value)
 
 
+def _parse_google_docstring_args(docstring: str) -> dict[str, str]:
+    """Extract per-parameter descriptions from a Google-style Args section."""
+    param_descriptions: dict[str, str] = {}
+    in_args = False
+    current_param: str | None = None
+    current_desc_lines: list[str] = []
+
+    for raw_line in docstring.splitlines():
+        stripped = raw_line.strip()
+        if stripped == "Args:":
+            in_args = True
+            continue
+        if in_args:
+            # A new top-level section (e.g. "Returns:", "Raises:") ends Args
+            if stripped and not stripped.startswith(" ") and stripped.endswith(":") and ":" not in stripped[:-1]:
+                # Check if this is a section header at the same indent as "Args:"
+                pass
+            # Detect dedent back to section level — ends Args block
+            if stripped and not raw_line.startswith(" ") and not raw_line.startswith("\t"):
+                break
+            # New parameter line: "param_name: description" or "param_name (type): description"
+            if ":" in stripped:
+                before_colon, _, after_colon = stripped.partition(":")
+                # Parameter names don't contain spaces (unless it's a type annotation in parens)
+                clean_name = before_colon.split("(")[0].strip()
+                if clean_name.isidentifier():
+                    # Save previous param
+                    if current_param is not None:
+                        param_descriptions[current_param] = " ".join(current_desc_lines).strip()
+                    current_param = clean_name
+                    current_desc_lines = [after_colon.strip()] if after_colon.strip() else []
+                    continue
+            # Continuation line for current parameter
+            if current_param is not None and stripped:
+                current_desc_lines.append(stripped)
+
+    # Save last param
+    if current_param is not None:
+        param_descriptions[current_param] = " ".join(current_desc_lines).strip()
+
+    return param_descriptions
+
+
 def _build_input_schema(func: Callable[..., object]) -> dict[str, object]:
-    """Build JSON Schema from function signature and type hints."""
+    """Build JSON Schema from function signature, type hints, and docstring."""
     sig = inspect.signature(func)
     hints = get_type_hints(func)
     properties: dict[str, dict[str, str]] = {}
     required: list[str] = []
+
+    # Extract parameter descriptions from Google-style docstring
+    docstring = inspect.getdoc(func) or ""
+    param_descriptions = _parse_google_docstring_args(docstring)
 
     for name, param in sig.parameters.items():
         if name == "self":
@@ -79,7 +127,10 @@ def _build_input_schema(func: Callable[..., object]) -> dict[str, object]:
                 hint = next((a for a in args if a is not type(None)), hint)
             json_type = _TYPE_MAP.get(hint, "string")
 
-        properties[name] = {"type": json_type}
+        prop: dict[str, str] = {"type": json_type}
+        if name in param_descriptions:
+            prop["description"] = param_descriptions[name]
+        properties[name] = prop
         if param.default is inspect.Parameter.empty:
             required.append(name)
 
@@ -171,16 +222,27 @@ async def _record_usage(
         return
 
 
-def agent_accessible(description: str | None = None) -> Callable[..., object]:
+def agent_accessible(
+    description: str | None = None,
+    *,
+    name: str | None = None,
+    input_schema: dict[str, object] | None = None,
+    org_id: str | None = None,
+    workspace_id: str | None = None,
+) -> Callable[..., object]:
     """Mark a function as callable by agents and attach metadata for Raysurfer."""
 
     def decorator(func: Callable[..., object]) -> Callable[..., object]:
-        schema = {
-            "name": func.__name__,
+        schema: dict[str, object] = {
+            "name": name or func.__name__,
             "description": description or func.__doc__ or "",
-            "input_schema": _build_input_schema(func),
+            "input_schema": input_schema or _build_input_schema(func),
             "source": inspect.getsource(func),
         }
+        if org_id is not None:
+            schema["org_id"] = org_id
+        if workspace_id is not None:
+            schema["workspace_id"] = workspace_id
 
         if inspect.iscoroutinefunction(func):
 
@@ -222,6 +284,21 @@ def agent_accessible(description: str | None = None) -> Callable[..., object]:
     return decorator
 
 
+def to_anthropic_tool(func: Callable[..., object]) -> dict[str, object]:
+    """Convert an @agent_accessible function to an Anthropic tool definition dict."""
+    schema = _get_schema(func)
+    if schema is None:
+        raise ValueError(
+            f"Function '{func.__name__}' is not decorated with @agent_accessible. "
+            "Decorate it first, then call to_anthropic_tool()."
+        )
+    return {
+        "name": str(schema["name"]),
+        "description": str(schema["description"]),
+        "input_schema": schema["input_schema"],
+    }
+
+
 async def publish_function_registry(
     client: SupportsRegistryClient,
     functions: list[Callable[..., object]],
@@ -236,16 +313,20 @@ async def publish_function_registry(
         if schema is None:
             continue
 
-        upload_result = client.upload_new_code_snip(
-            task=f"Call {schema['name']}: {schema['description']}",
-            file_written=FileWritten(
+        func_workspace_id = schema.get("workspace_id")
+        upload_kwargs: dict[str, object] = {
+            "task": f"Call {schema['name']}: {schema['description']}",
+            "file_written": FileWritten(
                 path=f"{schema['name']}.py",
                 content=str(schema["source"]),
             ),
-            succeeded=True,
-            use_raysurfer_ai_voting=False,
-            tags=["function_registry", "agent_accessible"],
-        )
+            "succeeded": True,
+            "use_raysurfer_ai_voting": False,
+            "tags": ["function_registry", "agent_accessible"],
+        }
+        if isinstance(func_workspace_id, str):
+            upload_kwargs["workspace_id"] = func_workspace_id
+        upload_result = client.upload_new_code_snip(**upload_kwargs)
         if inspect.isawaitable(upload_result):
             response = await upload_result
         else:

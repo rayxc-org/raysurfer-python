@@ -21,7 +21,7 @@ Set RAYSURFER_API_KEY to enable caching.
 # Main client
 # Direct API clients (for advanced use cases)
 from raysurfer._version import __version__  # noqa: E402
-from raysurfer.accessible import agent_accessible, publish_function_registry
+from raysurfer.accessible import agent_accessible, publish_function_registry, to_anthropic_tool
 from raysurfer.agent import AsyncCodegenApp, CodegenApp
 from raysurfer.client import AsyncRaySurfer, RaySurfer
 from raysurfer.config import AgentAccessRules, RaysurferConfig, load_config
@@ -88,6 +88,7 @@ __all__ = [
     # Agent-accessible decorator
     "agent_accessible",
     "publish_function_registry",
+    "to_anthropic_tool",
     "load_config",
     "AgentAccessRules",
     "RaysurferConfig",

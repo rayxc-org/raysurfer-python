@@ -52,7 +52,7 @@ async with AsyncRaySurfer(api_key="rs_...") as client:
     result = await client.search(task="Fetch GitHub user data")
 
     # Upload: store a code file + logs + query (voting triggered by default)
-    await client.upload_new_code_snip(
+    await client.upload(
         task="Fetch GitHub user data",
         file_written=FileWritten(path="fetcher.py", content="def fetch(): ..."),
         succeeded=True,

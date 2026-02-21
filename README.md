@@ -49,7 +49,7 @@ for match in result.matches:
 
 # 2. Upload a new code file after execution
 file = FileWritten(path="fetch_repos.py", content="def fetch(): ...")
-client.upload_new_code_snip(
+client.upload(
     task=task,
     file_written=file,
     succeeded=True,
@@ -91,7 +91,7 @@ async with AsyncRaySurfer(api_key="your_api_key") as client:
 
     # 2. Upload a new code file after execution
     file = FileWritten(path="fetch_repos.py", content="def fetch(): ...")
-    await client.upload_new_code_snip(
+    await client.upload(
         task="Fetch GitHub trending repos",
         file_written=file,
         succeeded=True,
@@ -180,7 +180,7 @@ Instead of relying on AI voting, provide your own votes:
 
 ```python
 # Single upload with your own vote (AI voting is skipped)
-client.upload_new_code_snip(
+client.upload(
     task="Fetch GitHub trending repos",
     file_written=file,
     succeeded=True,
@@ -209,7 +209,7 @@ client.upload_bulk_code_snips(
 | `get_few_shot_examples(task, k)` | Retrieve few-shot examples for code generation prompting |
 | `get_task_patterns(task, min_thumbs_up, top_k)` | Retrieve proven task-to-code mappings |
 | `store_code_block(name, source, entrypoint, language, description, tags, dependencies, ...)` | Store a code block with full metadata |
-| `upload_new_code_snip(task, file_written, succeeded, use_raysurfer_ai_voting, user_vote, execution_logs, dependencies)` | Store a single code file with optional dependency versions |
+| `upload(task, file_written, succeeded, use_raysurfer_ai_voting, user_vote, execution_logs, dependencies)` | Store a single code file with optional dependency versions |
 | `upload_bulk_code_snips(prompts, files_written, log_files, use_raysurfer_ai_voting, user_votes)` | Bulk upload for grading (AI votes by default, or provide per-file votes) |
 | `vote_code_snip(task, code_block_id, name, description, succeeded)` | Vote on snippet usefulness |
 
@@ -427,6 +427,47 @@ result = await rs.execute(
 | `cache_hit` | `bool` | Reserved field (currently always `False` for execute) |
 | `error` | `str \| None` | Error message if exit_code != 0 |
 | `tool_calls` | `list[ToolCallRecord]` | All tool calls made during execution |
+
+## Agent-Accessible Functions
+
+Mark functions as agent-callable with `@agent_accessible()`. Metadata (name, description, input schema) is auto-inferred from the function signature and docstring:
+
+```python
+from raysurfer import agent_accessible, to_anthropic_tool
+
+@agent_accessible()
+def fetch_user(username: str, include_repos: bool = False):
+    """Fetch a GitHub user profile.
+
+    Args:
+        username: The GitHub username to look up.
+        include_repos: Whether to include the user's repositories.
+    """
+    ...
+
+# Override any auto-inferred field
+@agent_accessible(description="Custom description", name="custom_name")
+def another_function(x: int):
+    ...
+```
+
+### Convert to Anthropic Tool Format
+
+```python
+tool_def = to_anthropic_tool(fetch_user)
+# {"name": "fetch_user", "description": "Fetch a GitHub user profile.", "input_schema": {...}}
+```
+
+### Org/Workspace Scoping
+
+Scope functions to a specific organization or workspace for upload:
+
+```python
+@agent_accessible(org_id="org_xxx", workspace_id="ws_xxx")
+def scoped_function(data: str):
+    """Only visible within the specified workspace."""
+    ...
+```
 
 ## License
 
