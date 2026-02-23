@@ -31,6 +31,7 @@ from raysurfer.types import (
     BulkExecutionResultResponse,
     CodeBlock,
     CodeBlockMatch,
+    DeleteResponse,
     ExecuteResult,
     ExecutionIO,
     ExecutionRecord,
@@ -392,6 +393,24 @@ class AsyncRaySurfer:
     upload_new_code_snip = upload
     upload_new_code_snips = upload_new_code_snip
 
+    async def delete(
+        self,
+        snippet_id: str,
+        workspace_id: str | None = None,
+    ) -> DeleteResponse:
+        """
+        Delete a snippet and all its associated data.
+
+        Args:
+            snippet_id: The ID of the snippet to delete.
+            workspace_id: Override client-level workspace_id for this request.
+        """
+        data: JsonDict = {"snippet_id": snippet_id}
+        result = await self._request(
+            "POST", "/api/snippets/delete", headers_override=self._workspace_headers(workspace_id), json=data
+        )
+        return DeleteResponse(**result)
+
     async def upload_bulk_code_snips(
         self,
         prompts: list[str],
@@ -672,9 +691,14 @@ class AsyncRaySurfer:
 
     async def comment_on_code_snip(self, code_block_id: str, text: str) -> JsonDict:
         """Add a comment to a cached code snippet."""
-        return await self._request("POST", "/api/store/comment", json={
-            "code_block_id": code_block_id, "text": text,
-        })
+        return await self._request(
+            "POST",
+            "/api/store/comment",
+            json={
+                "code_block_id": code_block_id,
+                "text": text,
+            },
+        )
 
     # =========================================================================
     # Auto Review API
@@ -1341,6 +1365,24 @@ class RaySurfer:
     upload_new_code_snip = upload
     upload_new_code_snips = upload_new_code_snip
 
+    def delete(
+        self,
+        snippet_id: str,
+        workspace_id: str | None = None,
+    ) -> DeleteResponse:
+        """
+        Delete a snippet and all its associated data.
+
+        Args:
+            snippet_id: The ID of the snippet to delete.
+            workspace_id: Override client-level workspace_id for this request.
+        """
+        data: JsonDict = {"snippet_id": snippet_id}
+        result = self._request(
+            "POST", "/api/snippets/delete", headers_override=self._workspace_headers(workspace_id), json=data
+        )
+        return DeleteResponse(**result)
+
     def upload_bulk_code_snips(
         self,
         prompts: list[str],
@@ -1621,9 +1663,14 @@ class RaySurfer:
 
     def comment_on_code_snip(self, code_block_id: str, text: str) -> JsonDict:
         """Add a comment to a cached code snippet."""
-        return self._request("POST", "/api/store/comment", json={
-            "code_block_id": code_block_id, "text": text,
-        })
+        return self._request(
+            "POST",
+            "/api/store/comment",
+            json={
+                "code_block_id": code_block_id,
+                "text": text,
+            },
+        )
 
     # =========================================================================
     # Auto Review API

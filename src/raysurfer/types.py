@@ -243,6 +243,14 @@ class SubmitExecutionResultRequest(BaseModel):
     agent_id: str | None = None
 
 
+class DeleteResponse(BaseModel):
+    """Response from deleting a snippet"""
+
+    success: bool
+    deleted_count: int
+    message: str
+
+
 class SubmitExecutionResultResponse(BaseModel):
     """Response from submitting execution result"""
 

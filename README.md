@@ -211,6 +211,7 @@ client.upload_bulk_code_snips(
 | `store_code_block(name, source, entrypoint, language, description, tags, dependencies, ...)` | Store a code block with full metadata |
 | `upload(task, file_written, succeeded, use_raysurfer_ai_voting, user_vote, execution_logs, dependencies)` | Store a single code file with optional dependency versions |
 | `upload_bulk_code_snips(prompts, files_written, log_files, use_raysurfer_ai_voting, user_votes)` | Bulk upload for grading (AI votes by default, or provide per-file votes) |
+| `delete(snippet_id)` | Delete a snippet and all its associated data |
 | `vote_code_snip(task, code_block_id, name, description, succeeded)` | Vote on snippet usefulness |
 
 ### Exceptions
