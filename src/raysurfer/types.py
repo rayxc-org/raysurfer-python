@@ -102,6 +102,20 @@ class ExecutionRecord(BaseModel):
     review: AgentReview | None = None
 
 
+class FunctionReputation(BaseModel):
+    """Per-function reputation data tracked independently of snippet-level metrics"""
+
+    fingerprint: str
+    function_name: str
+    signature: str
+    execution_count: int = 0
+    thumbs_up: int = 0
+    thumbs_down: int = 0
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    common_errors: list[str] = Field(default_factory=list)
+
+
 class SearchMatch(BaseModel):
     """A code block match with scoring"""
 
@@ -117,6 +131,7 @@ class SearchMatch(BaseModel):
     dependencies: dict[str, str] = Field(default_factory=dict)  # Package name -> version
     comments: list[JsonDict] = Field(default_factory=list)
     agent_id: str | None = None
+    functions: list[FunctionReputation] | None = None
 
     @model_validator(mode="after")
     def _set_default_compat_scores(self) -> "SearchMatch":

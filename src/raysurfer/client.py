@@ -38,6 +38,7 @@ from raysurfer.types import (
     ExecutionState,
     FewShotExample,
     FileWritten,
+    FunctionReputation,
     JsonDict,
     JsonValue,
     LogFile,
@@ -471,6 +472,7 @@ class AsyncRaySurfer:
         min_human_upvotes: int = 0,
         prefer_complete: bool = False,
         input_schema: JsonDict | None = None,
+        include_function_reputation: bool = False,
         workspace_id: str | None = None,
     ) -> SearchResponse:
         """Unified search for cached code snippets.
@@ -482,9 +484,10 @@ class AsyncRaySurfer:
             min_human_upvotes: Minimum number of human upvotes required.
             prefer_complete: Prefer complete code blocks.
             input_schema: Optional input schema for filtering.
+            include_function_reputation: Include per-function reputation metadata injected into source.
             workspace_id: Override client-level workspace_id for this request.
         """
-        data = {
+        data: dict[str, object] = {
             "task": task,
             "top_k": top_k,
             "min_verdict_score": min_verdict_score,
@@ -492,6 +495,8 @@ class AsyncRaySurfer:
             "prefer_complete": prefer_complete,
             "input_schema": input_schema,
         }
+        if include_function_reputation:
+            data["include_function_reputation"] = True
         result = await self._request(
             "POST", "/api/retrieve/search", headers_override=self._workspace_headers(workspace_id), json=data
         )
@@ -508,6 +513,7 @@ class AsyncRaySurfer:
                 entrypoint=m["entrypoint"],
                 dependencies=m.get("dependencies", {}),
                 agent_id=m.get("agent_id"),
+                functions=[FunctionReputation(**f) for f in m["functions"]] if m.get("functions") else None,
             )
             for m in result["matches"]
         ]
@@ -1443,6 +1449,7 @@ class RaySurfer:
         min_human_upvotes: int = 0,
         prefer_complete: bool = False,
         input_schema: JsonDict | None = None,
+        include_function_reputation: bool = False,
         workspace_id: str | None = None,
     ) -> SearchResponse:
         """Unified search for cached code snippets.
@@ -1454,9 +1461,10 @@ class RaySurfer:
             min_human_upvotes: Minimum number of human upvotes required.
             prefer_complete: Prefer complete code blocks.
             input_schema: Optional input schema for filtering.
+            include_function_reputation: Include per-function reputation metadata injected into source.
             workspace_id: Override client-level workspace_id for this request.
         """
-        data = {
+        data: dict[str, object] = {
             "task": task,
             "top_k": top_k,
             "min_verdict_score": min_verdict_score,
@@ -1464,6 +1472,8 @@ class RaySurfer:
             "prefer_complete": prefer_complete,
             "input_schema": input_schema,
         }
+        if include_function_reputation:
+            data["include_function_reputation"] = True
         result = self._request(
             "POST", "/api/retrieve/search", headers_override=self._workspace_headers(workspace_id), json=data
         )
@@ -1480,6 +1490,7 @@ class RaySurfer:
                 entrypoint=m["entrypoint"],
                 dependencies=m.get("dependencies", {}),
                 agent_id=m.get("agent_id"),
+                functions=[FunctionReputation(**f) for f in m["functions"]] if m.get("functions") else None,
             )
             for m in result["matches"]
         ]
