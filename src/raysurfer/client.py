@@ -402,7 +402,7 @@ class AsyncRaySurfer:
         Delete a snippet and all its associated data.
 
         Args:
-            snippet_id: The ID of the snippet to delete.
+            snippet_id: The ID or name of the snippet to delete.
             workspace_id: Override client-level workspace_id for this request.
         """
         data: JsonDict = {"snippet_id": snippet_id}
@@ -1374,7 +1374,7 @@ class RaySurfer:
         Delete a snippet and all its associated data.
 
         Args:
-            snippet_id: The ID of the snippet to delete.
+            snippet_id: The ID or name of the snippet to delete.
             workspace_id: Override client-level workspace_id for this request.
         """
         data: JsonDict = {"snippet_id": snippet_id}
