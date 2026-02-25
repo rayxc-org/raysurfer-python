@@ -614,10 +614,15 @@ class AsyncRaySurfer:
         min_verdict_score: float = 0.3,
         prefer_complete: bool = True,
         cache_dir: str = ".raysurfer_code",
+        per_function_reputation: bool = True,
     ) -> GetCodeFilesResponse:
         """Get code files -- delegates to search()."""
         response = await self.search(
-            task=task, top_k=top_k, min_verdict_score=min_verdict_score, prefer_complete=prefer_complete
+            task=task,
+            top_k=top_k,
+            min_verdict_score=min_verdict_score,
+            prefer_complete=prefer_complete,
+            per_function_reputation=per_function_reputation,
         )
         files = [
             CodeFile(
@@ -1595,10 +1600,15 @@ class RaySurfer:
         min_verdict_score: float = 0.3,
         prefer_complete: bool = True,
         cache_dir: str = ".raysurfer_code",
+        per_function_reputation: bool = True,
     ) -> GetCodeFilesResponse:
         """Get code files -- delegates to search()."""
         response = self.search(
-            task=task, top_k=top_k, min_verdict_score=min_verdict_score, prefer_complete=prefer_complete
+            task=task,
+            top_k=top_k,
+            min_verdict_score=min_verdict_score,
+            prefer_complete=prefer_complete,
+            per_function_reputation=per_function_reputation,
         )
         files = [
             CodeFile(
