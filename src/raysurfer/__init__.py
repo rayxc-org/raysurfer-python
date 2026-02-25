@@ -35,6 +35,7 @@ from raysurfer.exceptions import (
     RaySurferError,
     ValidationError,
 )
+from raysurfer.logging import raysurfer_logging
 
 # Re-export Claude Agent SDK types for convenience (use these directly)
 from raysurfer.sdk_client import (
@@ -126,6 +127,7 @@ __all__ = [
     "FewShotExample",
     "FileWritten",
     "FunctionReputation",
+    "raysurfer_logging",
     "JsonDict",
     "JsonValue",
     "LogFile",

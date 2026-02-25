@@ -114,6 +114,13 @@ class FunctionReputation(BaseModel):
     last_success_at: datetime | None = None
     last_failure_at: datetime | None = None
     common_errors: list[str] = Field(default_factory=list)
+    avg_output_size: float = 0
+    output_completeness: float = 1.0
+    repeat_call_rate: float = 1.0
+    total_logged_calls: int = 0
+    author_agent: str | None = None
+    reviewed_by_human: bool = False
+    derived_from: str | None = None
 
 
 class SearchMatch(BaseModel):
