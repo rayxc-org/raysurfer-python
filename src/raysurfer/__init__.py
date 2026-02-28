@@ -35,7 +35,19 @@ from raysurfer.exceptions import (
     RaySurferError,
     ValidationError,
 )
-from raysurfer.logging import raysurfer_logging
+from raysurfer.logging import log, raysurfer_logging
+from raysurfer.programmatic import (
+    AnthropicProgrammaticToolCallWrapper,
+    AsyncAnthropicProgrammaticToolCallWrapper,
+    AsyncProgrammaticToolCallingSession,
+    ProgrammaticFrameworkResult,
+    ProgrammaticMaterializeContext,
+    ProgrammaticToolCallingSession,
+    run_async_framework_programmatic_tool_calling,
+    run_framework_programmatic_tool_calling,
+    wrap_anthropic_programmatic_tool_calling,
+    wrap_async_anthropic_programmatic_tool_calling,
+)
 
 # Re-export Claude Agent SDK types for convenience (use these directly)
 from raysurfer.sdk_client import (
@@ -127,6 +139,7 @@ __all__ = [
     "FewShotExample",
     "FileWritten",
     "FunctionReputation",
+    "log",
     "raysurfer_logging",
     "JsonDict",
     "JsonValue",
@@ -142,6 +155,16 @@ __all__ = [
     "TaskPattern",
     "ToolCallRecord",
     "ToolDefinition",
+    "ProgrammaticMaterializeContext",
+    "ProgrammaticToolCallingSession",
+    "AsyncProgrammaticToolCallingSession",
+    "ProgrammaticFrameworkResult",
+    "AnthropicProgrammaticToolCallWrapper",
+    "AsyncAnthropicProgrammaticToolCallWrapper",
+    "run_framework_programmatic_tool_calling",
+    "run_async_framework_programmatic_tool_calling",
+    "wrap_anthropic_programmatic_tool_calling",
+    "wrap_async_anthropic_programmatic_tool_calling",
     # Exceptions
     "RaySurferError",
     "APIError",

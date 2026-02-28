@@ -61,6 +61,11 @@ def raysurfer_logging(value: object) -> None:
             entry.value_types[value_type] = entry.value_types.get(value_type, 0) + 1
 
 
+# Drop-in alias for `from raysurfer import log`.
+# Assignment (instead of wrapper) preserves caller stack attribution.
+log = raysurfer_logging
+
+
 def _is_empty(value: object) -> bool:
     """Check if a value is considered 'empty' for telemetry purposes."""
     if value is None:

@@ -140,6 +140,11 @@ DEFAULT_RAYSURFER_URL = "https://api.raysurfer.com"
 MAX_CACHEABLE_FILE_SIZE = 100_000
 DEFAULT_RUN_PARSE_SAMPLE_RATE = 1.0
 RUN_PARSE_SAMPLE_RATE_ENV_VAR = "RAYSURFER_RUN_PARSE_SAMPLE_RATE"
+DEFAULT_AGENT_COMPATIBILITY_TOOLS_PRESET: JsonDict = {"type": "preset", "preset": "claude_code"}
+DEFAULT_SANDBOX_SETTINGS: JsonDict = {
+    "enabled": True,
+    "autoAllowBashIfSandboxed": True,
+}
 
 
 def _validate_run_parse_sample_rate(sample_rate: float, source: str) -> float:
@@ -183,6 +188,27 @@ def _resolve_run_parse_sample_rate(configured_sample_rate: float | None) -> floa
         return DEFAULT_RUN_PARSE_SAMPLE_RATE
 
     return parsed_sample_rate
+
+
+def _with_default_agent_compatibility(options: ClaudeAgentOptions | None) -> ClaudeAgentOptions:
+    """Apply default Claude Code tool preset and sandbox settings when not specified."""
+    base_options = options or ClaudeAgentOptions()
+    options_dict = vars(base_options).copy()
+
+    has_tools = options_dict.get("tools") is not None
+    has_allowed_tools = len(options_dict.get("allowed_tools") or []) > 0
+    if not has_tools and not has_allowed_tools:
+        options_dict["tools"] = DEFAULT_AGENT_COMPATIBILITY_TOOLS_PRESET.copy()
+
+    sandbox = options_dict.get("sandbox")
+    if sandbox is None:
+        options_dict["sandbox"] = DEFAULT_SANDBOX_SETTINGS.copy()
+    elif isinstance(sandbox, dict):
+        merged_sandbox = DEFAULT_SANDBOX_SETTINGS.copy()
+        merged_sandbox.update(sandbox)
+        options_dict["sandbox"] = merged_sandbox
+
+    return ClaudeAgentOptions(**options_dict)
 
 
 class RaysurferClient:
@@ -262,7 +288,7 @@ class RaysurferClient:
             run_parse_sample_rate: Fraction of successful runs to parse for AI voting (0.0-1.0).
                 Defaults to env var RAYSURFER_RUN_PARSE_SAMPLE_RATE or 1.0.
         """
-        self._options = options or ClaudeAgentOptions()
+        self._options = _with_default_agent_compatibility(options)
         self._base_client: _BaseClaudeSDKClient | None = None
         self._raysurfer: AsyncRaySurfer | None = None
         self._current_query: str | None = None
@@ -627,37 +653,11 @@ class RaysurferClient:
 
             augmented_agents = self._augment_subagent_prompts(self._options.agents)
 
-            # Create new options with augmented prompt - pass through all other options
-            return ClaudeAgentOptions(
-                allowed_tools=self._options.allowed_tools,
-                disallowed_tools=self._options.disallowed_tools,
-                permission_mode=self._options.permission_mode,
-                system_prompt=augmented_prompt,
-                cwd=self._options.cwd,
-                add_dirs=self._options.add_dirs,
-                max_turns=self._options.max_turns,
-                model=self._options.model,
-                env=self._options.env,
-                mcp_servers=self._options.mcp_servers,
-                hooks=self._options.hooks,
-                can_use_tool=self._options.can_use_tool,
-                setting_sources=self._options.setting_sources,
-                include_partial_messages=self._options.include_partial_messages,
-                fork_session=self._options.fork_session,
-                continue_conversation=self._options.continue_conversation,
-                resume=self._options.resume,
-                agents=augmented_agents,
-                plugins=self._options.plugins,
-                enable_file_checkpointing=self._options.enable_file_checkpointing,
-                output_format=self._options.output_format,
-                sandbox=self._options.sandbox,
-                extra_args=self._options.extra_args,
-                max_buffer_size=self._options.max_buffer_size,
-                stderr=self._options.stderr,
-                user=self._options.user,
-                settings=self._options.settings,
-                permission_prompt_tool_name=self._options.permission_prompt_tool_name,
-            )
+            # Create new options with augmented prompt and pass through all SDK fields.
+            options_dict = vars(self._options).copy()
+            options_dict["system_prompt"] = augmented_prompt
+            options_dict["agents"] = augmented_agents
+            return ClaudeAgentOptions(**options_dict)
         except Exception as e:
             logger.warning(f"Cache unavailable: {e}")
             return self._options
@@ -744,6 +744,7 @@ class RaysurferClient:
                     succeeded=self._task_succeeded,
                     use_raysurfer_ai_voting=self._parse_this_run_for_ai_voting,
                     execution_logs=execution_logs,
+                    per_function_reputation=True,
                 )
                 total_stored += result.code_blocks_stored
 

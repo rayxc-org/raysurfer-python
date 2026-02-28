@@ -79,8 +79,8 @@ def test_load_config_marks_matching_functions(tmp_path: Path) -> None:
     config_path = tmp_path / "raysurfer.yaml"
     config_path.write_text(
         "agent_access:\n"
-        "  call: [\"sample_module.py:allowed_*\", \"sample_module.py:blocked_task\"]\n"
-        "  deny: [\"sample_module.py:blocked_task\"]\n",
+        '  call: ["sample_module.py:allowed_*", "sample_module.py:blocked_task"]\n'
+        '  deny: ["sample_module.py:blocked_task"]\n',
         encoding="utf-8",
     )
 
