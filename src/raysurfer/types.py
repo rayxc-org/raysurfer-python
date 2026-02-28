@@ -320,6 +320,29 @@ class RetrieveExecutionsResponse(BaseModel):
     total_found: int
 
 
+class LogSearchMatch(BaseModel):
+    """A raw log match with snippet metadata and direct markdown link."""
+
+    snippet_id: str
+    name: str
+    filename: str | None = None
+    language: str
+    created_at: datetime
+    triggering_query: str | None = None
+    score: float
+    preview: str
+    raw_markdown_url: str
+    log_url: str | None = None
+
+
+class SearchLogsResponse(BaseModel):
+    """Response from searching raw execution logs."""
+
+    matches: list[LogSearchMatch]
+    total_found: int
+    has_more: bool
+
+
 # Public Snippet Browsing API
 class PublicSnippet(BaseModel):
     """A public community snippet from the curated namespace."""

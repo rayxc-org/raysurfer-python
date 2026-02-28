@@ -46,6 +46,7 @@ from raysurfer.types import (
     RetrieveBestResponse,
     RetrieveCodeBlockResponse,
     RetrieveExecutionsResponse,
+    SearchLogsResponse,
     SearchMatch,
     SearchPublicResponse,
     SearchResponse,
@@ -772,6 +773,28 @@ class AsyncRaySurfer:
             executions=executions,
             total_found=result["total_found"],
         )
+
+    async def search_logs(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        code_block_id: str | None = None,
+        language: str | None = None,
+        days_back: int | None = None,
+    ) -> SearchLogsResponse:
+        """Search raw execution logs and return direct markdown links for matching snippets."""
+        data = {
+            "query": query,
+            "limit": limit,
+            "offset": offset,
+            "code_block_id": code_block_id,
+            "language": language,
+            "days_back": days_back,
+        }
+        result = await self._request("POST", "/api/raw/search", json=data)
+        return SearchLogsResponse(**result)
 
     # =========================================================================
     # Execute API (tool calling)
@@ -1758,6 +1781,28 @@ class RaySurfer:
             executions=executions,
             total_found=result["total_found"],
         )
+
+    def search_logs(
+        self,
+        query: str,
+        *,
+        limit: int = 20,
+        offset: int = 0,
+        code_block_id: str | None = None,
+        language: str | None = None,
+        days_back: int | None = None,
+    ) -> SearchLogsResponse:
+        """Search raw execution logs and return direct markdown links for matching snippets."""
+        data = {
+            "query": query,
+            "limit": limit,
+            "offset": offset,
+            "code_block_id": code_block_id,
+            "language": language,
+            "days_back": days_back,
+        }
+        result = self._request("POST", "/api/raw/search", json=data)
+        return SearchLogsResponse(**result)
 
     # =========================================================================
     # Execute API (tool calling)
