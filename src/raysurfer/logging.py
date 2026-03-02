@@ -1,4 +1,4 @@
-"""Per-function telemetry via raysurfer_logging() — agents call this inside cached functions."""
+"""Per-function telemetry via raysurfer.log() — agents call this inside cached functions."""
 
 import atexit
 import inspect
@@ -23,7 +23,7 @@ _lock = threading.Lock()
 _telemetry: dict[str, _FunctionTelemetry] = {}
 
 
-def raysurfer_logging(value: object) -> None:
+def log(value: object) -> None:
     """Log a value from inside a cached function for per-function telemetry.
 
     Uses stack inspection to identify the caller — no decorator needed.
@@ -61,9 +61,8 @@ def raysurfer_logging(value: object) -> None:
             entry.value_types[value_type] = entry.value_types.get(value_type, 0) + 1
 
 
-# Drop-in alias for `from raysurfer import log`.
-# Assignment (instead of wrapper) preserves caller stack attribution.
-log = raysurfer_logging
+# Backwards-compatible alias — use `from raysurfer import log` instead.
+raysurfer_logging = log
 
 
 def _is_empty(value: object) -> bool:
