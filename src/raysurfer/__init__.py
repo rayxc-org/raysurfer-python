@@ -57,6 +57,7 @@ from raysurfer.sdk_client import (
     HookMatcher,
     Message,
     RaysurferClient,
+    RaysurferOpencodeClient,
     ResultMessage,
     SystemMessage,
     TextBlock,
@@ -92,6 +93,8 @@ from raysurfer.types import (
     SearchMatch,
     SearchPublicResponse,
     SearchResponse,
+    SharedCodeResponse,
+    SharedCodeSecurityReport,
     SubmitExecutionResultResponse,
     TaskPattern,
     ToolCallRecord,
@@ -111,6 +114,7 @@ __all__ = [
     "RaysurferConfig",
     # Main client
     "RaysurferClient",
+    "RaysurferOpencodeClient",
     # Re-exported from Claude Agent SDK (use these directly)
     "ClaudeAgentOptions",
     "AgentDefinition",
@@ -151,6 +155,8 @@ __all__ = [
     "SearchLogsResponse",
     "SearchMatch",
     "SearchResponse",
+    "SharedCodeResponse",
+    "SharedCodeSecurityReport",
     "BrowsePublicResponse",
     "BulkExecutionResultResponse",
     "PublicSnippet",

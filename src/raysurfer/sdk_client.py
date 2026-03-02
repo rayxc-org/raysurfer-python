@@ -118,6 +118,7 @@ class _DebugLogger:
 # Re-export all SDK types for convenience
 __all__ = [
     "RaysurferClient",
+    "RaysurferOpencodeClient",
     # Re-exported from Claude Agent SDK (use these directly)
     "ClaudeAgentOptions",
     "AgentDefinition",
@@ -777,3 +778,11 @@ class RaysurferClient:
                 logger.debug(f"Submitted vote for {block['filename']}")
             except Exception as e:
                 logger.warning(f"Failed to submit vote for {block['filename']}: {e}")
+
+
+class RaysurferOpencodeClient(RaysurferClient):
+    """
+    Alias wrapper for teams standardizing on an OpenCode-oriented client name.
+
+    Behavior is identical to RaysurferClient.
+    """

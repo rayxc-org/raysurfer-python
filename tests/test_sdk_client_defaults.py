@@ -106,6 +106,16 @@ def test_custom_tools_and_sandbox_are_preserved(sdk_module) -> None:
     assert client._options.sandbox.get("autoAllowBashIfSandboxed") is True
 
 
+def test_opencode_alias_matches_raysurfer_client(sdk_module) -> None:
+    """OpenCode alias should be an equivalent wrapper over the same implementation."""
+    alias_client = sdk_module.RaysurferOpencodeClient()
+    default_client = sdk_module.RaysurferClient()
+
+    assert isinstance(alias_client, sdk_module.RaysurferClient)
+    assert alias_client._options.tools == default_client._options.tools
+    assert alias_client._options.sandbox == default_client._options.sandbox
+
+
 @pytest.mark.asyncio
 async def test_augment_preserves_tools_and_new_sdk_fields(tmp_path) -> None:
     """Cache prompt augmentation should preserve all Claude options, including tools."""
