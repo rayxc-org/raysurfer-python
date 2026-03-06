@@ -9,6 +9,7 @@ import logging
 import uuid
 from collections.abc import Callable
 from types import TracebackType
+from typing import Literal
 
 import httpx
 import websockets
@@ -29,6 +30,7 @@ from raysurfer.types import (
     BestMatch,
     BrowsePublicResponse,
     BulkExecutionResultResponse,
+    ChatResponse,
     CodeBlock,
     CodeBlockMatch,
     DeleteResponse,
@@ -50,6 +52,7 @@ from raysurfer.types import (
     SearchMatch,
     SearchPublicResponse,
     SearchResponse,
+    SharedCodeResponse,
     SnipsDesired,
     StoreCodeBlockResponse,
     StoreExecutionResponse,
@@ -300,9 +303,11 @@ class AsyncRaySurfer:
         files_written: list[FileWritten] | None = None,
         auto_vote: bool | None = None,
         per_function_reputation: bool = False,
+        repo_path: str | None = None,
+        github_url: str | None = None,
     ) -> SubmitExecutionResultResponse:
         """
-        Upload a single code file from an execution.
+        Upload a single code file or repo scaffold from an execution.
 
         Args:
             task: The task that was executed.
@@ -323,7 +328,20 @@ class AsyncRaySurfer:
             public: Upload to the public community namespace (default False).
             vote_source: Origin of the vote (e.g. "cli", "mcp", "sdk").
             vote_count: Number of votes to apply (default 1).
+            repo_path: Local directory path to upload as a repo scaffold.
+            github_url: GitHub repo URL to import as a repo scaffold.
         """
+        # Repo upload path: if repo_path or github_url is provided, upload as a repo
+        if repo_path is not None or github_url is not None:
+            return await self._upload_repo(
+                task=task,
+                repo_path=repo_path,
+                github_url=github_url,
+                dependencies=dependencies,
+                tags=tags,
+                workspace_id=workspace_id,
+            )
+
         if file_written is not None and files_written is not None:
             raise ValueError("Provide either file_written or files_written, not both.")
 
@@ -394,6 +412,63 @@ class AsyncRaySurfer:
             "POST", "/api/store/execution-result", headers_override=self._workspace_headers(workspace_id), json=data
         )
         return SubmitExecutionResultResponse(**result)
+
+    async def _upload_repo(
+        self,
+        task: str,
+        repo_path: str | None = None,
+        github_url: str | None = None,
+        dependencies: dict[str, str] | None = None,
+        tags: list[str] | None = None,
+        workspace_id: str | None = None,
+    ) -> SubmitExecutionResultResponse:
+        """Upload a local directory or GitHub URL as a repo scaffold."""
+        from pathlib import Path
+
+        files: list[dict[str, str]] = []
+
+        if repo_path is not None:
+            repo_dir = Path(repo_path)
+            if not repo_dir.is_dir():
+                raise ValueError(f"repo_path is not a directory: {repo_path}")
+
+            # Walk directory, respect .gitignore-style exclusions
+            skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", ".tox", "dist", "build"}
+            for path in sorted(repo_dir.rglob("*")):
+                if path.is_dir():
+                    continue
+                # Skip common non-source directories
+                parts = path.relative_to(repo_dir).parts
+                if any(p in skip_dirs for p in parts):
+                    continue
+                # Skip binary files (best-effort)
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except (UnicodeDecodeError, PermissionError):
+                    continue
+                rel_path = str(path.relative_to(repo_dir))
+                files.append({"path": rel_path, "content": content})
+
+        data: JsonDict = {
+            "task": task,
+            "files": files,
+        }
+        if github_url is not None:
+            data["github_url"] = github_url
+        if dependencies is not None:
+            data["dependencies"] = dependencies
+        if tags is not None:
+            data["tags"] = tags
+
+        result = await self._request(
+            "POST", "/api/store/repo", headers_override=self._workspace_headers(workspace_id), json=data
+        )
+        return SubmitExecutionResultResponse(
+            success=result.get("success", False),
+            code_blocks_stored=1 if result.get("success") else 0,
+            message=result.get("message", ""),
+            snippet_name=result.get("repo_id"),
+        )
 
     # Backwards-compatible aliases
     upload_new_code_snip = upload
@@ -479,8 +554,9 @@ class AsyncRaySurfer:
         input_schema: JsonDict | None = None,
         per_function_reputation: bool = False,
         workspace_id: str | None = None,
+        result_type: str = "any",
     ) -> SearchResponse:
-        """Unified search for cached code snippets.
+        """Unified search for cached code snippets and repos.
 
         Args:
             task: The task to search for.
@@ -491,6 +567,7 @@ class AsyncRaySurfer:
             input_schema: Optional input schema for filtering.
             per_function_reputation: Include per-function reputation metadata injected into source.
             workspace_id: Override client-level workspace_id for this request.
+            result_type: Filter results by type: "any" (default), "file", or "repo".
         """
         data: dict[str, object] = {
             "task": task,
@@ -502,6 +579,8 @@ class AsyncRaySurfer:
         }
         if per_function_reputation:
             data["per_function_reputation"] = True
+        if result_type != "any":
+            data["result_type"] = result_type
         result = await self._request(
             "POST", "/api/retrieve/search", headers_override=self._workspace_headers(workspace_id), json=data
         )
@@ -519,6 +598,12 @@ class AsyncRaySurfer:
                 dependencies=m.get("dependencies", {}),
                 agent_id=m.get("agent_id"),
                 functions=[FunctionReputation(**f) for f in m["functions"]] if m.get("functions") else None,
+                type=m.get("type", "file"),
+                download_url=m.get("download_url"),
+                file_tree=m.get("file_tree"),
+                file_count=m.get("file_count"),
+                framework=m.get("framework"),
+                readme_preview=m.get("readme_preview"),
             )
             for m in result["matches"]
         ]
@@ -527,6 +612,35 @@ class AsyncRaySurfer:
             total_found=result["total_found"],
             cache_hit=result.get("cache_hit", False),
         )
+
+    async def shared_code(
+        self,
+        task: str,
+        provider_api_key: str,
+        provider: Literal["anthropic", "openai"] | None = None,
+        model: str | None = None,
+        similarity_threshold: float = 0.86,
+        top_k: int = 1,
+        language: str = "python",
+        auto_upload_public: bool = True,
+        fail_on_secrets: bool = True,
+        fail_on_malicious: bool = True,
+    ) -> SharedCodeResponse:
+        """Resolve shared code from public snippets with generation fallback."""
+        data: dict[str, object] = {
+            "task": task,
+            "provider_api_key": provider_api_key,
+            "provider": provider,
+            "model": model,
+            "similarity_threshold": similarity_threshold,
+            "top_k": top_k,
+            "language": language,
+            "auto_upload_public": auto_upload_public,
+            "fail_on_secrets": fail_on_secrets,
+            "fail_on_malicious": fail_on_malicious,
+        }
+        result = await self._request("POST", "/api/sharedCode", json=data)
+        return SharedCodeResponse(**result)
 
     async def get_code_snips(
         self,
@@ -1066,6 +1180,45 @@ class AsyncRaySurfer:
             query=result["query"],
         )
 
+    async def chat(
+        self,
+        query: str,
+        *,
+        user: str,
+        org: str,
+        model: str = "sonnet",
+        max_turns: int = 8,
+    ) -> ChatResponse:
+        """Run an agent chat turn with auto-persistent workspace.
+
+        State is automatically persisted across calls for the same user+org.
+        The agent has a persistent workspace where files survive between calls.
+
+        Args:
+            query: The task or question to send to the agent.
+            user: User identifier for workspace scoping.
+            org: Organization identifier for workspace scoping.
+            model: Claude model to use (default "sonnet").
+            max_turns: Maximum agent turns per request (default 8).
+        """
+        data: JsonDict = {
+            "user_query": query,
+            "user_id": user,
+            "org_id": org,
+            "model": model,
+            "max_turns": max_turns,
+        }
+        result = await self._request("POST", "/api/agent-chat", json=data)
+        return ChatResponse(
+            success=result.get("success", False),
+            output=result.get("output", ""),
+            error=result.get("error", ""),
+            session_id=result.get("session_id"),
+            duration_ms=result.get("duration_ms", 0),
+            changed_files=result.get("changed_files", []),
+            workspace_files=result.get("org_workspace_files", []),
+        )
+
 
 class RaySurfer:
     """Sync client for RaySurfer API"""
@@ -1536,6 +1689,35 @@ class RaySurfer:
             cache_hit=result.get("cache_hit", False),
         )
 
+    def shared_code(
+        self,
+        task: str,
+        provider_api_key: str,
+        provider: Literal["anthropic", "openai"] | None = None,
+        model: str | None = None,
+        similarity_threshold: float = 0.86,
+        top_k: int = 1,
+        language: str = "python",
+        auto_upload_public: bool = True,
+        fail_on_secrets: bool = True,
+        fail_on_malicious: bool = True,
+    ) -> SharedCodeResponse:
+        """Resolve shared code from public snippets with generation fallback."""
+        data: dict[str, object] = {
+            "task": task,
+            "provider_api_key": provider_api_key,
+            "provider": provider,
+            "model": model,
+            "similarity_threshold": similarity_threshold,
+            "top_k": top_k,
+            "language": language,
+            "auto_upload_public": auto_upload_public,
+            "fail_on_secrets": fail_on_secrets,
+            "fail_on_malicious": fail_on_malicious,
+        }
+        result = self._request("POST", "/api/sharedCode", json=data)
+        return SharedCodeResponse(**result)
+
     def get_code_snips(
         self,
         task: str,
@@ -1926,4 +2108,43 @@ class RaySurfer:
             snippets=snippets,
             total=result["total"],
             query=result["query"],
+        )
+
+    def chat(
+        self,
+        query: str,
+        *,
+        user: str,
+        org: str,
+        model: str = "sonnet",
+        max_turns: int = 8,
+    ) -> ChatResponse:
+        """Run an agent chat turn with auto-persistent workspace.
+
+        State is automatically persisted across calls for the same user+org.
+        The agent has a persistent workspace where files survive between calls.
+
+        Args:
+            query: The task or question to send to the agent.
+            user: User identifier for workspace scoping.
+            org: Organization identifier for workspace scoping.
+            model: Claude model to use (default "sonnet").
+            max_turns: Maximum agent turns per request (default 8).
+        """
+        data: JsonDict = {
+            "user_query": query,
+            "user_id": user,
+            "org_id": org,
+            "model": model,
+            "max_turns": max_turns,
+        }
+        result = self._request("POST", "/api/agent-chat", json=data)
+        return ChatResponse(
+            success=result.get("success", False),
+            output=result.get("output", ""),
+            error=result.get("error", ""),
+            session_id=result.get("session_id"),
+            duration_ms=result.get("duration_ms", 0),
+            changed_files=result.get("changed_files", []),
+            workspace_files=result.get("org_workspace_files", []),
         )

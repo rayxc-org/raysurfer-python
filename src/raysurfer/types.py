@@ -139,6 +139,13 @@ class SearchMatch(BaseModel):
     comments: list[JsonDict] = Field(default_factory=list)
     agent_id: str | None = None
     functions: list[FunctionReputation] | None = None
+    # Repo-specific fields (populated when type="repo")
+    type: Literal["file", "repo"] = "file"
+    download_url: str | None = None
+    file_tree: str | None = None
+    file_count: int | None = None
+    framework: str | None = None
+    readme_preview: str | None = None
 
     @model_validator(mode="after")
     def _set_default_compat_scores(self) -> "SearchMatch":
@@ -161,6 +168,31 @@ class SearchResponse(BaseModel):
     matches: list[SearchMatch]
     total_found: int
     cache_hit: bool = False
+
+
+class SharedCodeSecurityReport(BaseModel):
+    """Security report returned by sharedCode endpoint."""
+
+    contains_secrets: bool = False
+    secret_labels: list[str] = Field(default_factory=list)
+    malicious: bool = False
+    malicious_reasons: list[str] = Field(default_factory=list)
+    openrouter_checked: bool = False
+    openrouter_summary: str | None = None
+
+
+class SharedCodeResponse(BaseModel):
+    """Response from sharedCode endpoint."""
+
+    code: str
+    source: Literal["cache", "generated"]
+    cache_hit: bool
+    similarity_score: float | None = None
+    matched_code_block_id: str | None = None
+    generated_with_provider: Literal["anthropic", "openai"] | None = None
+    model_used: str | None = None
+    uploaded_code_block_id: str | None = None
+    security: SharedCodeSecurityReport
 
 
 class BestMatch(BaseModel):
@@ -234,6 +266,13 @@ class RetrieveBestResponse(BaseModel):
     best_match: BestMatch | None
     alternative_candidates: list[AlternativeCandidate]
     retrieval_confidence: str
+
+
+class RepoFile(BaseModel):
+    """A single file within a repository upload"""
+
+    path: str
+    content: str
 
 
 class FileWritten(BaseModel):
@@ -373,6 +412,19 @@ class SearchPublicResponse(BaseModel):
     snippets: list[PublicSnippet]
     total: int
     query: str
+
+
+# Agent Chat types
+class ChatResponse(BaseModel):
+    """Response from an agent chat turn with auto-persistent workspace."""
+
+    success: bool
+    output: str = ""
+    error: str = ""
+    session_id: str | None = None
+    duration_ms: int = 0
+    changed_files: list[str] = Field(default_factory=list)
+    workspace_files: list[str] = Field(default_factory=list)
 
 
 # Execute API types
