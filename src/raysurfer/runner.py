@@ -1,11 +1,11 @@
-"""High-level Agent runner for batch query execution with retroactive voting."""
+"""High-level Agent runner with automatic code caching and AI-driven quality scoring."""
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from dataclasses import dataclass, field
 from types import TracebackType
+from typing import Literal, TypedDict
 
 from raysurfer.client import DEFAULT_BASE_URL, AsyncRaySurfer
 from raysurfer.sdk_client import RaysurferClient
@@ -18,9 +18,16 @@ except ImportError:
     ResultMessage = None  # type: ignore[assignment,misc]
 
 
+class MessageParam(TypedDict):
+    """Anthropic-compatible message format for chat history."""
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
 @dataclass
 class RunResult:
-    """Result of a single query execution with metadata for retroactive voting."""
+    """Result of a single conversation execution."""
 
     run_id: str
     query: str
@@ -31,32 +38,29 @@ class RunResult:
 
 class Agent:
     """
-    Batch query runner with automatic code persistence and retroactive voting.
+    Conversation runner with automatic code caching and AI-driven quality scoring.
 
     Wraps raysurfer.search() and raysurfer.upload() into a single run() call.
-    For each query, searches for proven cached code, executes via Claude with
-    that code injected, and stores any new code generated. Tracks which cached
-    snippets contributed to each result so user feedback can retroactively
-    promote or demote them.
+    Accepts Anthropic-typed chat history, searches for proven cached code,
+    executes via Claude with that code injected, and stores any new code
+    generated. AI automatically scores code quality — no manual feedback needed.
 
     Usage:
         from raysurfer import Agent
 
-        async with Agent(org_id="acme-corp") as agent:
-            results = await agent.run(
-                ["Generate quarterly report", "Summarize sales data"],
-                user_id="user_123",
+        async with Agent(org_id="acme-corp", user_id="user_123") as agent:
+            result = await agent.run(
+                messages=[
+                    {"role": "user", "content": "Generate a quarterly report from our sales data"},
+                ],
             )
-
-            # User liked the first result, disliked the second
-            await agent.feedback(results[0].run_id, satisfied=True)
-            await agent.feedback(results[1].run_id, satisfied=False)
     """
 
     def __init__(
         self,
         *,
         org_id: str | None = None,
+        user_id: str | None = None,
         api_key: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         agent_id: str | None = None,
@@ -69,6 +73,7 @@ class Agent:
 
         Args:
             org_id: Organization ID for shared code library across the team.
+            user_id: User identifier for scoped code retrieval.
             api_key: RaySurfer API key (or set RAYSURFER_API_KEY env var).
             base_url: API base URL.
             agent_id: Optional agent identifier for agent-scoped isolation.
@@ -77,13 +82,13 @@ class Agent:
             model: Model to use (default: claude-opus-4-6).
         """
         self._org_id = org_id
+        self._user_id = user_id
         self._api_key = api_key
         self._base_url = base_url
         self._agent_id = agent_id
         self._allowed_tools = allowed_tools or ["Read", "Write", "Bash"]
         self._system_prompt = system_prompt or "You are a helpful assistant."
         self._model = model
-        self._run_log: dict[str, RunResult] = {}
         self._raysurfer: AsyncRaySurfer | None = None
 
     async def __aenter__(self) -> Agent:
@@ -111,24 +116,25 @@ class Agent:
 
     async def run(
         self,
-        user_queries: list[str],
+        messages: list[MessageParam],
         user_id: str | None = None,
         org_id: str | None = None,
-    ) -> list[RunResult]:
+    ) -> RunResult:
         """
-        Process a batch of user queries with automatic code caching.
+        Process a conversation with automatic code caching.
 
-        Each query goes through the raysurfer loop:
+        Each conversation goes through the raysurfer loop:
         1. raysurfer.search() — find proven cached code matching the query
         2. Execute via Claude with cached code injected as context
         3. raysurfer.upload() — store any new code generated for future reuse
 
-        Returns RunResult objects with run_ids for retroactive feedback.
+        AI automatically scores code quality on execution — no manual
+        feedback needed.
 
         Args:
-            user_queries: List of tasks/queries to process.
-            user_id: User identifier for scoped code retrieval.
-            org_id: Override the agent-level org_id for this batch.
+            messages: Anthropic-typed chat history (list of role/content dicts).
+            user_id: Override the agent-level user_id for this run.
+            org_id: Override the agent-level org_id for this run.
         """
         if ClaudeAgentOptions is None:
             raise ImportError(
@@ -141,12 +147,17 @@ class Agent:
         if effective_org_id and self._raysurfer:
             self._raysurfer.organization_id = effective_org_id
 
-        results: list[RunResult] = []
-        for query in user_queries:
-            result = await self._run_single(query, user_id)
-            results.append(result)
+        # Extract last user message as the search query
+        query = ""
+        for msg in reversed(messages):
+            if msg["role"] == "user":
+                query = msg["content"]
+                break
 
-        return results
+        if not query:
+            raise ValueError("Messages must contain at least one user message.")
+
+        return await self._run_single(query, user_id or self._user_id)
 
     async def _run_single(
         self,
@@ -168,68 +179,24 @@ class Agent:
             agent_id=self._agent_id,
         )
 
-        messages: list[object] = []
+        response_messages: list[object] = []
         succeeded = False
 
         async with client:
             await client.query(query)
             async for msg in client.response():
-                messages.append(msg)
+                response_messages.append(msg)
                 if ResultMessage is not None and isinstance(msg, ResultMessage):
                     if msg.subtype == "success":
                         succeeded = True
 
-            # Capture which cached snippets were used for retroactive voting
+            # Capture which cached snippets were used
             code_used = list(client._cached_code_blocks)
 
-        result = RunResult(
+        return RunResult(
             run_id=run_id,
             query=query,
             succeeded=succeeded,
-            messages=messages,
+            messages=response_messages,
             code_used=code_used,
         )
-        self._run_log[run_id] = result
-        return result
-
-    async def feedback(self, run_id: str, satisfied: bool) -> None:
-        """
-        Retroactively vote on all code that contributed to a run result.
-
-        When a user expresses satisfaction, every cached snippet that was
-        retrieved and used during that run gets a thumbs up. When dissatisfied,
-        they get thumbs down. Over time this promotes code that makes users
-        happy and demotes code that doesn't.
-
-        New code generated during the run is already AI-voted at upload time.
-        This method specifically handles the retroactive user signal on cached
-        code that was reused.
-
-        Args:
-            run_id: The run_id from a RunResult.
-            satisfied: True for thumbs up, False for thumbs down.
-        """
-        result = self._run_log.get(run_id)
-        if result is None:
-            raise ValueError(
-                f"Unknown run_id: {run_id}. "
-                "Run IDs are only valid within the same Agent session."
-            )
-
-        if not self._raysurfer:
-            raise RuntimeError("Agent is not initialized. Use 'async with Agent() as agent:'")
-
-        tasks = []
-        for block in result.code_used:
-            tasks.append(
-                self._raysurfer.vote_code_snip(
-                    task=result.query,
-                    code_block_id=block["code_block_id"],
-                    code_block_name=block.get("filename", ""),
-                    code_block_description=block.get("description", ""),
-                    succeeded=satisfied,
-                )
-            )
-
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
