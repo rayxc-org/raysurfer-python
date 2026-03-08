@@ -48,6 +48,7 @@ from raysurfer.programmatic import (
     wrap_anthropic_programmatic_tool_calling,
     wrap_async_anthropic_programmatic_tool_calling,
 )
+from raysurfer.runner import Agent, RunResult
 
 # Re-export Claude Agent SDK types for convenience (use these directly)
 from raysurfer.sdk_client import (
@@ -104,6 +105,9 @@ from raysurfer.types import (
 )
 
 __all__ = [
+    # High-level agent runner
+    "Agent",
+    "RunResult",
     # High-level app wrappers
     "CodegenApp",
     "AsyncCodegenApp",
