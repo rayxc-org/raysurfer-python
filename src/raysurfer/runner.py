@@ -48,19 +48,19 @@ class Agent:
     Usage:
         from raysurfer import Agent
 
-        async with Agent(org_id="acme-corp", user_id="user_123") as agent:
-            result = await agent.run(
-                messages=[
-                    {"role": "user", "content": "Generate a quarterly report from our sales data"},
-                ],
-            )
+        agent = Agent()
+        result = await agent.run(
+            org_id="acme-corp",
+            user_id="user_123",
+            messages=[
+                {"role": "user", "content": "Generate a quarterly report from our sales data"},
+            ],
+        )
     """
 
     def __init__(
         self,
         *,
-        org_id: str | None = None,
-        user_id: str | None = None,
         api_key: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         agent_id: str | None = None,
@@ -72,8 +72,6 @@ class Agent:
         Initialize an Agent runner.
 
         Args:
-            org_id: Organization ID for shared code library across the team.
-            user_id: User identifier for scoped code retrieval.
             api_key: RaySurfer API key (or set RAYSURFER_API_KEY env var).
             base_url: API base URL.
             agent_id: Optional agent identifier for agent-scoped isolation.
@@ -81,8 +79,6 @@ class Agent:
             system_prompt: System prompt for the underlying Claude agent.
             model: Model to use (default: claude-opus-4-6).
         """
-        self._org_id = org_id
-        self._user_id = user_id
         self._api_key = api_key
         self._base_url = base_url
         self._agent_id = agent_id
@@ -91,17 +87,24 @@ class Agent:
         self._model = model
         self._raysurfer: AsyncRaySurfer | None = None
 
+    async def _ensure_client(self, org_id: str | None) -> AsyncRaySurfer:
+        """Initialize the raysurfer client on first use, or update org_id."""
+        if self._raysurfer is None:
+            snips_desired = SnipsDesired.COMPANY if org_id else None
+            self._raysurfer = AsyncRaySurfer(
+                api_key=self._api_key,
+                base_url=self._base_url,
+                organization_id=org_id,
+                snips_desired=snips_desired,
+                agent_id=self._agent_id,
+            )
+            await self._raysurfer.__aenter__()
+        elif org_id:
+            self._raysurfer.organization_id = org_id
+        return self._raysurfer
+
     async def __aenter__(self) -> Agent:
-        """Initialize the underlying raysurfer client."""
-        snips_desired = SnipsDesired.COMPANY if self._org_id else None
-        self._raysurfer = AsyncRaySurfer(
-            api_key=self._api_key,
-            base_url=self._base_url,
-            organization_id=self._org_id,
-            snips_desired=snips_desired,
-            agent_id=self._agent_id,
-        )
-        await self._raysurfer.__aenter__()
+        """Support async with for backwards compatibility."""
         return self
 
     async def __aexit__(
@@ -117,8 +120,9 @@ class Agent:
     async def run(
         self,
         messages: list[MessageParam],
-        user_id: str | None = None,
+        *,
         org_id: str | None = None,
+        user_id: str | None = None,
     ) -> RunResult:
         """
         Process a conversation with automatic code caching.
@@ -133,8 +137,8 @@ class Agent:
 
         Args:
             messages: Anthropic-typed chat history (list of role/content dicts).
-            user_id: Override the agent-level user_id for this run.
-            org_id: Override the agent-level org_id for this run.
+            org_id: Organization ID for shared code library across the team.
+            user_id: User identifier for scoped code retrieval.
         """
         if ClaudeAgentOptions is None:
             raise ImportError(
@@ -142,10 +146,7 @@ class Agent:
                 "Install it: uv pip install claude-agent-sdk"
             )
 
-        effective_org_id = org_id or self._org_id
-
-        if effective_org_id and self._raysurfer:
-            self._raysurfer.organization_id = effective_org_id
+        await self._ensure_client(org_id)
 
         # Extract last user message as the search query
         query = ""
@@ -157,7 +158,7 @@ class Agent:
         if not query:
             raise ValueError("Messages must contain at least one user message.")
 
-        return await self._run_single(query, user_id or self._user_id)
+        return await self._run_single(query, user_id)
 
     async def _run_single(
         self,
