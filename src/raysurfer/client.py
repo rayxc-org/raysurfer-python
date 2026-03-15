@@ -1220,6 +1220,44 @@ class AsyncRaySurfer:
         )
 
 
+    async def heartbeat(
+        self,
+        agent_id: str,
+        *,
+        agent_name: str | None = None,
+        status: str = "running",
+        current_task: str | None = None,
+        cpu_percent: float | None = None,
+        memory_percent: float | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        """Report agent heartbeat for dashboard monitoring.
+
+        Call periodically (e.g. every 15s) to keep the agent visible in the dashboard.
+
+        Args:
+            agent_id: Unique identifier for this agent instance.
+            agent_name: Human-readable name for the agent.
+            status: Agent status — "running", "idle", "error", or "stopped".
+            current_task: Description of what the agent is currently doing.
+            cpu_percent: CPU usage percentage (0-100).
+            memory_percent: Memory usage percentage (0-100).
+            metadata: Additional key-value metadata.
+        """
+        data: JsonDict = {"agent_id": agent_id, "status": status}
+        if agent_name is not None:
+            data["agent_name"] = agent_name
+        if current_task is not None:
+            data["current_task"] = current_task
+        if cpu_percent is not None:
+            data["cpu_percent"] = cpu_percent
+        if memory_percent is not None:
+            data["memory_percent"] = memory_percent
+        if metadata is not None:
+            data["metadata"] = metadata
+        return await self._request("POST", "/api/agents/heartbeat", json=data)
+
+
 class RaySurfer:
     """Sync client for RaySurfer API"""
 
